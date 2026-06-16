@@ -532,11 +532,6 @@ document.getElementById('pngBtn').addEventListener('click',()=>{
 });
 
 // ---- share via URL ----
-// UTF-8 safe, URL-safe base64 (handles 日本語 labels, newlines, &, # etc.)
-function encodeCode(str){
-  const b64=btoa(unescape(encodeURIComponent(str)));
-  return b64.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-}
 function decodeCode(s){
   let b64=s.replace(/-/g,'+').replace(/_/g,'/');
   while(b64.length%4) b64+='=';
@@ -569,20 +564,25 @@ function isViewOnly(){
   const v=getParam('view');
   return v==='1'||v==='true'||v==='';   // ?view / ?view=1 / ?view=true
 }
-function buildShareLink(opts){
-  opts=opts||{};
-  const code=editor.value.trim();
-  let url=location.origin+location.pathname+'?c='+encodeCode(code);
-  if(opts.view) url+='&view=1';
-  return url;
-}
 async function copyLink(url,msg){
   try{await navigator.clipboard.writeText(url);showToast(msg);}
   catch{ window.prompt('このURLをコピーしてください',url); }
 }
-document.getElementById('linkBtn').addEventListener('click',()=>{
+document.getElementById('linkBtn').addEventListener('click',async()=>{
   if(!editor.value.trim()){showToast('まず図を入力してください');return;}
-  copyLink(buildShareLink({view:true}),'読み取り専用リンクをコピーしました');
+  if(!USE_FIREBASE||!fb){showToast('Firebaseが初期化されていません');return;}
+  if(!fbUser){showToast('リンク作成にはログインが必要です');fbSignIn();return;}
+  showToast('リンクを作成中…');
+  try{
+    const {collection,addDoc,serverTimestamp}=fb.fsMod;
+    const ref=await addDoc(collection(fb.db,'shared'),
+      {code:editor.value,ownerUid:fbUser.uid,createdAt:serverTimestamp()});
+    const url=location.origin+location.pathname+'?id='+ref.id+'&view=1';
+    copyLink(url,'共有リンクをコピーしました');
+  }catch(e){
+    showToast('リンクの作成に失敗しました：'+(e.code||e.message));
+    console.error('linkBtn:',e);
+  }
 });
 // switch from view-only to editable (for the viewer who wants to tweak)
 function applyViewOnly(on){
@@ -762,7 +762,23 @@ const firebaseConfig = {
 const USE_FIREBASE = !/^YOUR_/.test(firebaseConfig.apiKey) && !/^YOUR_/.test(firebaseConfig.projectId);
 
 const authBtn=document.getElementById('authBtn');
-let fb=null, fbUser=null;
+let fb=null, fbUser=null, pendingSharedId=null;
+
+async function loadShared(id){
+  if(!fb){pendingSharedId=id; return;}
+  try{
+    const {doc,getDoc}=fb.fsMod;
+    const snap=await getDoc(doc(fb.db,'shared',id));
+    if(!snap.exists()){setStatus('error');showError('共有リンクが見つかりません');showToast('見つかりません');return;}
+    editor.value=snap.data().code||'';
+    updateGutter(); resetView(); render().then(fit);
+    showToast('共有リンクを読み込みました');
+  }catch(e){
+    setStatus('error');
+    showError('読み込めませんでした：'+(e.code||e.message));
+    showToast('読み込みに失敗しました');
+  }
+}
 
 function updateAuthUI(){
   if(!USE_FIREBASE){ authBtn.style.display='none'; return; }
@@ -795,6 +811,7 @@ async function initFirebase(){
     authMod.onAuthStateChanged(auth, u=>{
       fbUser=u; updateAuthUI();
       refreshSaved('');
+      if(pendingSharedId){const sid=pendingSharedId;pendingSharedId=null;loadShared(sid);}
     });
   }catch(e){ console.error(e); showToast('Firebaseの初期化に失敗しました'); }
 }
@@ -812,7 +829,11 @@ initFirebase();
 // 閲覧専用リンクならエディタを隠して図だけ表示
 if(isViewOnly()) applyViewOnly(true);
 
-{
+const idParam=getParam('id');
+if(idParam){
+  updateGutter();
+  loadShared(idParam);
+}else{
   const initial=getInitialCode();
   if(initial){
     editor.value=initial;
