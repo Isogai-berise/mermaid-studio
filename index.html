@@ -215,9 +215,6 @@
           </button>
           <label>保存済み</label>
           <select id="saved"><option value="">（保存した図）</option></select>
-          <button class="headbtn" id="delSaved" title="選択中の保存を削除">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
-          </button>
           <button class="txtbtn" id="saveBtn" title="現在の図に名前を付けて保存">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
             保存
@@ -791,10 +788,6 @@ document.getElementById('newBtn').addEventListener('click',()=>{
 });
 document.getElementById('saveBtn').addEventListener('click',saveCurrent);
 savedSel.addEventListener('change',e=>{ if(e.target.value) loadSaved(e.target.value); });
-document.getElementById('delSaved').addEventListener('click',()=>{
-  if(savedSel.value) deleteSaved(savedSel.value);
-  else showToast('削除する保存を選んでください');
-});
 
 // ---- load Mermaid diagrams from a local .md file ----
 const mdBtn=document.getElementById('mdBtn');
