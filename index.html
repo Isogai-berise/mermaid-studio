@@ -65,6 +65,11 @@
     color:var(--muted);border:1px solid var(--border);background:#1f232c;transition:.12s}
   .headbtn:hover{color:var(--err);border-color:#5a2a2e;background:#2a181a}
   .headbtn svg{width:14px;height:14px}
+  .txtbtn{height:27px;padding:0 11px;border-radius:6px;border:1px solid var(--border);
+    background:#1f232c;color:var(--muted);font-size:11.5px;font-family:var(--sans);
+    display:inline-flex;align-items:center;gap:6px;cursor:pointer;transition:.12s}
+  .txtbtn:hover{color:var(--ink);border-color:#3a4150;background:#262b35}
+  .txtbtn svg{width:13px;height:13px}
   select{font-family:var(--sans);font-size:12.5px;background:#1f232c;color:var(--ink);
     border:1px solid var(--border);border-radius:6px;padding:5px 8px;cursor:pointer}
   select optgroup{background:#1f232c;color:var(--accent);font-weight:600;font-style:normal}
@@ -152,6 +157,10 @@
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">準備完了</span></div>
     <div class="spacer"></div>
     <div class="actions">
+      <button class="btn" id="authBtn" style="display:none" title="ログイン">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
+        <span class="label">ログイン</span>
+      </button>
       <button class="btn" id="saveBtn" title="現在の図に名前を付けてブラウザに保存">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
         <span class="label">保存</span>
@@ -183,6 +192,14 @@
     <!-- editor -->
     <section class="editor-pane">
       <div class="editor-head">
+        <button class="txtbtn" id="mdBtn" title="mdファイルのURLからMermaid図を読み込む">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13l2 2 4-4"/></svg>
+          md読込
+        </button>
+        <button class="txtbtn" id="publishBtn" title="IDを付けて公開用ファイルに書き出す（みんなが閲覧できるURLになります）">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
+          ID公開
+        </button>
         <label>テンプレート</label>
         <select id="tpl"></select>
         <label>保存済み</label>
@@ -215,6 +232,11 @@
         <span class="ch-label">製図台</span>
         <div class="spacer" style="flex:1"></div>
         <label class="toggle"><input type="checkbox" id="bgWhite" checked>PNG背景を白に</label>
+        <div class="grp md-nav" id="mdNav" style="display:none">
+          <button class="iconbtn" id="mdPrev" title="前の図"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <span class="zoomval" id="mdLabel">図 1/1</span>
+          <button class="iconbtn" id="mdNext" title="次の図"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></button>
+        </div>
         <div class="grp">
           <button class="iconbtn" id="zoomOut" title="縮小"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
           <span class="zoomval" id="zoomVal">100%</span>
@@ -682,24 +704,224 @@ document.getElementById('delSaved').addEventListener('click',()=>{
   else showToast('削除する保存を選んでください');
 });
 
+// ---- load Mermaid diagrams from a .md file URL ----
+const mdBtn=document.getElementById('mdBtn');
+const mdNav=document.getElementById('mdNav');
+const mdLabel=document.getElementById('mdLabel');
+let mdBlocks=[], mdIndex=0;
+
+// GitHub の blob ページURLを raw に変換（よく貼られるため）
+function normalizeMdUrl(url){
+  url=(url||'').trim();
+  const m=url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/);
+  if(m) return `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}`;
+  return url;
+}
+// ```mermaid ... ``` のフェンスを全部取り出す
+function extractMermaid(md){
+  const blocks=[]; const re=/```[ \t]*mermaid[^\n]*\n([\s\S]*?)```/gi; let m;
+  while((m=re.exec(md))!==null){ const code=m[1].replace(/\s+$/,''); if(code.trim()) blocks.push(code); }
+  return blocks;
+}
+function updateMdNav(){
+  if(mdBlocks.length>1){ mdNav.style.display='flex'; mdLabel.textContent=`図 ${mdIndex+1}/${mdBlocks.length}`; }
+  else{ mdNav.style.display='none'; }
+}
+function showMdBlock(i){
+  if(!mdBlocks.length) return;
+  mdIndex=(i+mdBlocks.length)%mdBlocks.length;
+  editor.value=mdBlocks[mdIndex];
+  tplSel.value=''; savedSel.value='';
+  updateGutter(); resetView(); render().then(fit);
+  updateMdNav();
+}
+async function loadFromMd(url){
+  const u=normalizeMdUrl(url);
+  showToast('mdを読み込み中…');
+  try{
+    const res=await fetch(u,{mode:'cors'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const text=await res.text();
+    const blocks=extractMermaid(text);
+    if(!blocks.length){ showToast('mdの中にMermaid記法が見つかりませんでした'); return; }
+    mdBlocks=blocks; showMdBlock(0);
+    showToast(`Mermaid図を${blocks.length}件読み込みました`);
+  }catch(e){
+    setStatus('error');
+    showError('mdを読み込めませんでした：'+(e.message||e)+
+      '\n（URLの誤り、または配信元がCORSを許可していない可能性があります。GitHubのrawリンクをお試しください）');
+    showToast('読み込みに失敗しました');
+  }
+}
+mdBtn.addEventListener('click',()=>{
+  let url;
+  try{ url=window.prompt('mdファイルのURLを入力（GitHubのrawリンク推奨）\n例: https://raw.githubusercontent.com/user/repo/main/README.md',''); }
+  catch(e){ url=''; }
+  if(url) loadFromMd(url);
+});
+document.getElementById('mdPrev').addEventListener('click',()=>showMdBlock(mdIndex-1));
+document.getElementById('mdNext').addEventListener('click',()=>showMdBlock(mdIndex+1));
+
+// ---- ID registry (shared via the repo's diagrams/ folder) ----
+// 図を diagrams/<id>.mmd として公開し、?id=<id> で誰でも読めるようにする仕組み。
+function sanitizeId(id){ return (id||'').trim().replace(/[^A-Za-z0-9_-]/g,''); }
+function suggestId(){
+  const base=(editor.value.trim().split('\n')[0]||'diagram').toLowerCase()
+    .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,28);
+  return base || ('d'+Date.now().toString(36));
+}
+async function loadFromId(id){
+  id=sanitizeId(id);
+  if(!id){ showToast('IDが不正です'); return; }
+  const url=new URL('diagrams/'+id+'.mmd', location.href).toString();
+  showToast('ID「'+id+'」を読み込み中…');
+  try{
+    const res=await fetch(url,{cache:'no-cache'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const text=await res.text();
+    if(!text.trim()) throw new Error('ファイルが空です');
+    editor.value=text;
+    tplSel.value=''; savedSel.value='';
+    updateGutter(); resetView(); render().then(fit);
+    showToast('ID「'+id+'」を読み込みました');
+  }catch(e){
+    setStatus('error');
+    showError('ID「'+id+'」を読み込めませんでした：'+(e.message||e)+
+      '\n（diagrams/'+id+'.mmd がリポジトリに存在し、公開（コミット）されているか確認してください）');
+    showToast('読み込みに失敗しました');
+  }
+}
+function publishId(){
+  if(!editor.value.trim()){ showToast('まず図を入力してください'); return; }
+  let id;
+  try{ id=window.prompt('公開する ID を入力（英数字・- _ のみ／この ID が URL になります）\n例: login-flow', suggestId()); }
+  catch(e){ id=suggestId(); }
+  if(id===null) return;
+  id=sanitizeId(id);
+  if(!id){ showToast('IDが不正です'); return; }
+  if(USE_FIREBASE){ publishToCloud(id); return; }
+  // （Firebase未使用時）diagrams/ に置くためのファイルを書き出す
+  download(new Blob([editor.value],{type:'text/plain;charset=utf-8'}), id+'.mmd');
+  // 公開URL（読み取り専用）をコピー
+  const url=location.origin+location.pathname+'?id='+id+'&view=1';
+  copyLink(url, `「${id}.mmd」を保存し、公開URLをコピーしました（diagrams/ に置いてください）`);
+}
+document.getElementById('publishBtn').addEventListener('click',publishId);
+
+// ====================================================================
+// Firebase 連携（特定の人だけ閲覧可にする・任意）
+// 下の firebaseConfig を実際の値に置き換えると有効化されます。
+//  - ?id=<id> はクラウド(Firestore)から読み込み、閲覧にはログインが必要
+//  - 「ID公開」はクラウドに保存（書き込みは owner だけ／ルールで制御）
+//  - apiKey は公開して問題ありません（安全性は Firestore のルールで担保）
+// 置き換えない限り Firebase は一切読み込まれず、従来どおり動きます。
+// ====================================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyAtGElsSEzzZWZwHuRp9x1J470e9upNb1A",
+  authDomain: "mermaid-preview.firebaseapp.com",
+  projectId: "mermaid-preview",
+  storageBucket: "mermaid-preview.firebasestorage.app",
+  messagingSenderId: "562280784970",
+  appId: "1:562280784970:web:26a0ac4da85f0c6468b2b3"
+};
+const USE_FIREBASE = !/^YOUR_/.test(firebaseConfig.apiKey) && !/^YOUR_/.test(firebaseConfig.projectId);
+
+const authBtn=document.getElementById('authBtn');
+let fb=null, fbUser=null, pendingId=null;
+
+function updateAuthUI(){
+  if(!USE_FIREBASE){ authBtn.style.display='none'; return; }
+  authBtn.style.display='inline-flex';
+  const lbl=authBtn.querySelector('.label');
+  if(fbUser){ lbl.textContent='ログアウト'; authBtn.title='ログアウト（'+fbUser.email+'）'; }
+  else{ lbl.textContent='ログイン'; authBtn.title='Googleでログイン'; }
+}
+async function initFirebase(){
+  if(!USE_FIREBASE){ updateAuthUI(); return; }
+  try{
+    // 必要なときだけ動的に読み込む（未設定でもアプリ本体は壊れない）
+    const appMod  = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+    const authMod = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    const fsMod   = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+    const app  = appMod.initializeApp(firebaseConfig);
+    const auth = authMod.getAuth(app);
+    const db   = fsMod.getFirestore(app);
+    fb = { auth, db, authMod, fsMod, provider:new authMod.GoogleAuthProvider() };
+    authMod.onAuthStateChanged(auth, u=>{
+      fbUser=u; updateAuthUI();
+      if(u && pendingId){ const pid=pendingId; pendingId=null; loadFromCloud(pid); }
+    });
+  }catch(e){ console.error(e); showToast('Firebaseの初期化に失敗しました'); }
+}
+async function fbSignIn(){
+  if(!fb) return;
+  try{ await fb.authMod.signInWithPopup(fb.auth, fb.provider); }
+  catch(e){ showToast('ログインに失敗：'+(e.code||e.message)); }
+}
+async function fbSignOut(){ if(fb){ await fb.authMod.signOut(fb.auth); showToast('ログアウトしました'); } }
+authBtn.addEventListener('click',()=> fbUser ? fbSignOut() : fbSignIn());
+
+async function loadFromCloud(id){
+  id=sanitizeId(id);
+  if(!id){ showToast('IDが不正です'); return; }
+  if(!fb){ pendingId=id; return; }                 // 初期化待ち
+  if(!fbUser){ pendingId=id; showToast('閲覧にはログインが必要です'); return; }
+  try{
+    const snap=await fb.fsMod.getDoc(fb.fsMod.doc(fb.db,'diagrams',id));
+    if(!snap.exists()){ setStatus('error'); showError('ID「'+id+'」は存在しません'); showToast('見つかりません'); return; }
+    editor.value=(snap.data().code)||'';
+    tplSel.value=''; savedSel.value='';
+    updateGutter(); resetView(); render().then(fit);
+    showToast('ID「'+id+'」を読み込みました');
+  }catch(e){
+    setStatus('error');
+    showError('読み込めませんでした：'+(e.code||e.message)+'\n（閲覧権限がない可能性があります）');
+    showToast('権限がないか、読み込みに失敗しました');
+  }
+}
+async function publishToCloud(id){
+  if(!fb){ showToast('Firebaseが初期化されていません'); return; }
+  if(!fbUser){ showToast('公開にはログインが必要です'); fbSignIn(); return; }
+  try{
+    await fb.fsMod.setDoc(fb.fsMod.doc(fb.db,'diagrams',id),
+      { code: editor.value, email: fbUser.email, updatedAt: fb.fsMod.serverTimestamp() });
+    const url=location.origin+location.pathname+'?id='+id+'&view=1';
+    copyLink(url, 'クラウドに公開し、閲覧URLをコピーしました');
+  }catch(e){ showToast('公開に失敗：'+(e.code||e.message)+'（owner権限が必要です）'); }
+}
+
 // ---- init ----
 refreshSaved('');
-const initial=getInitialCode();
-if(initial){
-  editor.value=initial;
-  // 読み込んだ記法がテンプレートと一致すればメニューにも反映
-  const match=Object.keys(templates).find(k=>templates[k]===initial);
-  tplSel.value=match||'';
-}else{
-  tplSel.value='';
-}
+initFirebase();
 // テーマがURLで指定されていれば復元（共有リンクの見た目を再現）
 const tParam=getParam('t');
 if(tParam && VALID_THEMES.includes(tParam)) applyTheme(tParam);
 // 閲覧専用リンクならエディタを隠して図だけ表示
 if(isViewOnly()) applyViewOnly(true);
-updateGutter();
-render().then(()=>{ if(initial) fit(); });
+
+const idParam=getParam('id');
+const mdParam=getParam('md');
+if(idParam){
+  // ?id=<id> 最優先。Firebase設定時はクラウド（要ログイン）、未設定時は diagrams/<id>.mmd
+  updateGutter();
+  if(USE_FIREBASE) loadFromCloud(idParam);
+  else loadFromId(idParam);
+}else if(mdParam){
+  // ?md=<URL>：mdからMermaidを抽出して表示
+  updateGutter();
+  loadFromMd(mdParam);
+}else{
+  const initial=getInitialCode();
+  if(initial){
+    editor.value=initial;
+    const match=Object.keys(templates).find(k=>templates[k]===initial);
+    tplSel.value=match||'';
+  }else{
+    tplSel.value='';
+  }
+  updateGutter();
+  render().then(()=>{ if(initial) fit(); });
+}
 window.addEventListener('resize',()=>{});
 </script>
 </body>
