@@ -23,9 +23,9 @@
   body{font-family:var(--sans);background:var(--bg);color:var(--ink);overflow:hidden}
   button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
   button:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
- 
+
   .app{display:flex;flex-direction:column;height:100vh}
- 
+
   /* ---- top bar ---- */
   .topbar{display:flex;align-items:center;gap:16px;padding:0 16px;height:54px;
     background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0}
@@ -49,17 +49,22 @@
   .btn.primary{color:#fff;background:var(--accent)}
   .btn.primary:hover{background:#ff7d60}
   .btn svg{width:14px;height:14px}
- 
+
   /* ---- workspace split ---- */
   .work{flex:1;display:flex;min-height:0}
- 
+
   /* editor pane (drafting console) */
   .editor-pane{width:42%;min-width:280px;display:flex;flex-direction:column;
     background:var(--editor-bg);border-right:1px solid var(--border)}
-  .editor-head{display:flex;align-items:center;gap:10px;padding:9px 14px;
+  .editor-head{display:flex;align-items:center;gap:8px 10px;padding:9px 14px;flex-wrap:wrap;
     border-bottom:1px solid var(--editor-line);flex-shrink:0}
   .editor-head label{font-size:11px;color:var(--muted);text-transform:uppercase;
     letter-spacing:.1em;font-family:var(--mono)}
+  .editor-head select{max-width:150px}
+  .headbtn{width:28px;height:27px;display:grid;place-items:center;border-radius:6px;
+    color:var(--muted);border:1px solid var(--border);background:#1f232c;transition:.12s}
+  .headbtn:hover{color:var(--err);border-color:#5a2a2e;background:#2a181a}
+  .headbtn svg{width:14px;height:14px}
   select{font-family:var(--sans);font-size:12.5px;background:#1f232c;color:var(--ink);
     border:1px solid var(--border);border-radius:6px;padding:5px 8px;cursor:pointer}
   .editor-wrap{flex:1;display:flex;min-height:0;position:relative;font-family:var(--mono);
@@ -70,13 +75,13 @@
     padding:14px 16px;white-space:pre;overflow:auto;tab-size:2;
     font-family:inherit;font-size:inherit;line-height:inherit;caret-color:var(--accent)}
   #editor::placeholder{color:#4a505c}
- 
+
   .errbar{flex-shrink:0;display:none;gap:9px;align-items:flex-start;padding:10px 14px;
     background:#2a181a;border-top:1px solid #43232a;color:#ffb0ac;
     font-family:var(--mono);font-size:12px;line-height:1.5;max-height:120px;overflow:auto}
   .errbar.show{display:flex}
   .errbar svg{width:14px;height:14px;flex-shrink:0;margin-top:1px;color:var(--err)}
- 
+
   /* canvas pane (paper) */
   .canvas-pane{flex:1;display:flex;flex-direction:column;background:var(--canvas);min-width:0}
   .canvas-head{display:flex;align-items:center;gap:8px;padding:8px 12px;
@@ -92,7 +97,7 @@
     font-family:var(--mono);color:#a8aca0}
   .toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;cursor:pointer;user-select:none}
   .toggle input{accent-color:var(--accent)}
- 
+
   .viewport{flex:1;position:relative;overflow:hidden;cursor:grab;
     background-color:var(--canvas);
     background-image:radial-gradient(circle,rgba(20,25,35,.07) 1px,transparent 1px);
@@ -102,12 +107,12 @@
   #stage svg{display:block;max-width:none!important;height:auto}
   .empty{position:absolute;inset:0;display:grid;place-items:center;color:#b5b9af;
     font-size:13px;pointer-events:none}
- 
+
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
     background:#1a1d24;color:#fff;padding:10px 18px;border-radius:9px;font-size:13px;
     box-shadow:0 8px 30px rgba(0,0,0,.3);opacity:0;transition:.25s;pointer-events:none;z-index:50}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
- 
+
   @media (max-width:760px){
     .work{flex-direction:column}
     .editor-pane{width:100%;height:46%;min-width:0;border-right:none;border-bottom:1px solid var(--border)}
@@ -132,6 +137,10 @@
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">準備完了</span></div>
     <div class="spacer"></div>
     <div class="actions">
+      <button class="btn" id="saveBtn" title="現在の図に名前を付けてブラウザに保存">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        <span class="label">保存</span>
+      </button>
       <button class="btn" id="linkBtn" title="この図を開ける共有URLをコピー">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         <span class="label">リンクをコピー</span>
@@ -150,13 +159,18 @@
       </button>
     </div>
   </header>
- 
+
   <div class="work">
     <!-- editor -->
     <section class="editor-pane">
       <div class="editor-head">
         <label>テンプレート</label>
         <select id="tpl"></select>
+        <label>保存済み</label>
+        <select id="saved"><option value="">（保存した図）</option></select>
+        <button class="headbtn" id="delSaved" title="選択中の保存を削除">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+        </button>
         <label style="margin-left:auto">テーマ</label>
         <select id="theme">
           <option value="default">Default</option>
@@ -175,7 +189,7 @@
         <span id="errText"></span>
       </div>
     </section>
- 
+
     <!-- canvas -->
     <section class="canvas-pane">
       <div class="canvas-head">
@@ -197,7 +211,7 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
- 
+
 <script>
 const templates = {
   "フローチャート": `graph TD
@@ -291,7 +305,7 @@ const templates = {
   merge develop
   commit`
 };
- 
+
 const editor = document.getElementById('editor');
 const gutter = document.getElementById('gutter');
 const stage = document.getElementById('stage');
@@ -305,19 +319,19 @@ const tplSel = document.getElementById('tpl');
 const themeSel = document.getElementById('theme');
 const zoomVal = document.getElementById('zoomVal');
 const toast = document.getElementById('toast');
- 
+
 let renderId = 0;
 let currentSvg = null;
- 
+
 // populate templates
 const ph=document.createElement('option'); ph.value=''; ph.textContent='（テンプレートを選択）'; tplSel.appendChild(ph);
 Object.keys(templates).forEach(k=>{
   const o=document.createElement('option'); o.value=k; o.textContent=k; tplSel.appendChild(o);
 });
- 
+
 mermaid.initialize({startOnLoad:false, theme:'default', securityLevel:'loose',
   flowchart:{htmlLabels:true,curve:'basis'}, fontFamily:'Inter, system-ui, sans-serif'});
- 
+
 // ---- gutter ----
 function updateGutter(){
   const n = editor.value.split('\n').length;
@@ -326,7 +340,7 @@ function updateGutter(){
   gutter.scrollTop = editor.scrollTop;
 }
 editor.addEventListener('scroll',()=>gutter.scrollTop=editor.scrollTop);
- 
+
 // tab inserts two spaces
 editor.addEventListener('keydown',e=>{
   if(e.key==='Tab'){
@@ -337,7 +351,7 @@ editor.addEventListener('keydown',e=>{
     onInput();
   }
 });
- 
+
 function setStatus(state){
   if(state==='ok'){dot.className='dot pulse';statusText.textContent='描画完了';
     setTimeout(()=>dot.className='dot',500);}
@@ -348,7 +362,7 @@ function showError(msg){
   errbar.classList.add('show');
 }
 function hideError(){errbar.classList.remove('show');}
- 
+
 async function render(){
   const code = editor.value.trim();
   if(!code){stage.innerHTML='';empty.style.display='grid';hideError();statusText.textContent='準備完了';return;}
@@ -374,7 +388,7 @@ async function render(){
     showError((err && err.message) ? err.message : String(err));
   }
 }
- 
+
 let debounce;
 function onInput(){
   updateGutter();
@@ -382,7 +396,7 @@ function onInput(){
   debounce=setTimeout(render,250);
 }
 editor.addEventListener('input',onInput);
- 
+
 // ---- templates & theme ----
 function loadTemplate(name){
   editor.value = templates[name];
@@ -391,12 +405,13 @@ function loadTemplate(name){
   render().then(fit);
 }
 tplSel.addEventListener('change',e=>{ if(e.target.value) loadTemplate(e.target.value); });
-themeSel.addEventListener('change',e=>{
-  mermaid.initialize({startOnLoad:false, theme:e.target.value, securityLevel:'loose',
+function applyTheme(theme){
+  themeSel.value=theme;
+  mermaid.initialize({startOnLoad:false, theme:theme, securityLevel:'loose',
     flowchart:{htmlLabels:true,curve:'basis'}, fontFamily:'Inter, system-ui, sans-serif'});
-  render();
-});
- 
+}
+themeSel.addEventListener('change',e=>{ applyTheme(e.target.value); render(); });
+
 // ---- pan & zoom ----
 let scale=1, tx=0, ty=0, baseW=0, baseH=0;
 function applyTransform(){
@@ -424,7 +439,7 @@ function fit(){
 document.getElementById('fitBtn').addEventListener('click',fit);
 document.getElementById('zoomIn').addEventListener('click',()=>{scale=Math.min(scale*1.2,12);applyTransform();});
 document.getElementById('zoomOut').addEventListener('click',()=>{scale=Math.max(scale/1.2,0.1);applyTransform();});
- 
+
 viewport.addEventListener('wheel',e=>{
   e.preventDefault();
   const rect=viewport.getBoundingClientRect();
@@ -434,17 +449,17 @@ viewport.addEventListener('wheel',e=>{
   tx=mx-(mx-tx)*(ns/scale); ty=my-(my-ty)*(ns/scale);
   scale=ns; applyTransform();
 },{passive:false});
- 
+
 let dragging=false,sx,sy;
 viewport.addEventListener('pointerdown',e=>{dragging=true;sx=e.clientX-tx;sy=e.clientY-ty;
   viewport.classList.add('grabbing');viewport.setPointerCapture(e.pointerId);});
 viewport.addEventListener('pointermove',e=>{if(!dragging)return;tx=e.clientX-sx;ty=e.clientY-sy;applyTransform();});
 viewport.addEventListener('pointerup',()=>{dragging=false;viewport.classList.remove('grabbing');});
- 
+
 // ---- export ----
 function showToast(msg){toast.textContent=msg;toast.classList.add('show');
   setTimeout(()=>toast.classList.remove('show'),1800);}
- 
+
 function serializedSvg(){
   if(!currentSvg) return null;
   const clone=currentSvg.cloneNode(true);
@@ -462,7 +477,7 @@ function download(blob,name){
   a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
 function stamp(){return new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');}
- 
+
 document.getElementById('svgBtn').addEventListener('click',()=>{
   const s=serializedSvg(); if(!s){showToast('まず図を描画してください');return;}
   download(new Blob([s.str],{type:'image/svg+xml'}),`diagram-${stamp()}.svg`);
@@ -490,7 +505,7 @@ document.getElementById('pngBtn').addEventListener('click',()=>{
   img.onerror=()=>showToast('PNG変換に失敗しました（SVGをお試しください）');
   img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s.str);
 });
- 
+
 // ---- share via URL ----
 // UTF-8 safe, URL-safe base64 (handles 日本語 labels, newlines, &, # etc.)
 function encodeCode(str){
@@ -528,8 +543,76 @@ document.getElementById('linkBtn').addEventListener('click',async()=>{
     window.prompt('このURLをコピーしてください',url);
   }
 });
- 
+
+// ---- save to browser (localStorage) ----
+// Works on a real deployment (e.g. GitHub Pages). In sandboxed previews where
+// storage is blocked, every call degrades gracefully instead of throwing.
+const savedSel=document.getElementById('saved');
+const STORE_KEY='mermaidStudio.diagrams.v1';
+const canStore=(()=>{try{const k='__ms_test__';localStorage.setItem(k,'1');localStorage.removeItem(k);return true;}catch(e){return false;}})();
+
+function loadAll(){
+  if(!canStore) return [];
+  try{return JSON.parse(localStorage.getItem(STORE_KEY)||'[]');}catch(e){return [];}
+}
+function saveAll(arr){
+  if(!canStore) return false;
+  try{localStorage.setItem(STORE_KEY,JSON.stringify(arr));return true;}catch(e){return false;}
+}
+function refreshSaved(selectId){
+  const items=loadAll().sort((a,b)=>b.ts-a.ts);
+  savedSel.innerHTML='';
+  const ph=document.createElement('option');
+  ph.value=''; ph.textContent=items.length?`（保存した図・${items.length}件）`:'（保存した図）';
+  savedSel.appendChild(ph);
+  items.forEach(it=>{const o=document.createElement('option');o.value=it.id;o.textContent=it.name;savedSel.appendChild(o);});
+  savedSel.value=selectId||'';
+}
+function defaultName(){
+  const first=(editor.value.trim().split('\n')[0]||'図').replace(/\s+/g,' ').slice(0,28);
+  return first||'無題の図';
+}
+function saveCurrent(){
+  if(!editor.value.trim()){showToast('まず図を入力してください');return;}
+  if(!canStore){showToast('このプレビューでは保存できません（デプロイ先では保存できます）');return;}
+  let name;
+  try{name=window.prompt('保存名を入力してください',defaultName());}catch(e){name=defaultName();}
+  if(name===null) return;                 // キャンセル
+  name=(name||'').trim()||defaultName();
+  const items=loadAll();
+  const id='d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  items.push({id,name,code:editor.value,theme:themeSel.value,ts:Date.now()});
+  if(saveAll(items)){refreshSaved(id);showToast('保存しました：'+name);}
+  else showToast('保存に失敗しました');
+}
+function loadSaved(id){
+  const it=loadAll().find(x=>x.id===id);
+  if(!it){showToast('保存が見つかりませんでした');return;}
+  editor.value=it.code;
+  if(it.theme) applyTheme(it.theme);
+  tplSel.value='';
+  updateGutter();
+  resetView();
+  render().then(fit);
+}
+function deleteSaved(id){
+  const items=loadAll();
+  const it=items.find(x=>x.id===id);
+  if(!it) return;
+  try{if(!window.confirm(`「${it.name}」を削除しますか？`)) return;}catch(e){}
+  saveAll(items.filter(x=>x.id!==id));
+  refreshSaved('');
+  showToast('削除しました');
+}
+document.getElementById('saveBtn').addEventListener('click',saveCurrent);
+savedSel.addEventListener('change',e=>{ if(e.target.value) loadSaved(e.target.value); });
+document.getElementById('delSaved').addEventListener('click',()=>{
+  if(savedSel.value) deleteSaved(savedSel.value);
+  else showToast('削除する保存を選んでください');
+});
+
 // ---- init ----
+refreshSaved('');
 const initial=getInitialCode();
 if(initial){
   editor.value=initial;
@@ -545,4 +628,3 @@ window.addEventListener('resize',()=>{});
 </script>
 </body>
 </html>
- 
