@@ -136,6 +136,11 @@
     transition:.12s;cursor:pointer}
   .dd-item:hover{color:var(--ink);background:#ffffff0d}
   .dd-chevron{width:11px;height:11px;margin-left:1px;flex-shrink:0;opacity:.6}
+  .dd-sep{height:1px;background:var(--border);margin:4px 0}
+  .dd-toggle{display:flex;align-items:center;gap:8px;padding:7px 13px;border-radius:6px;
+    font-size:12px;color:var(--muted);cursor:pointer;transition:.12s;user-select:none}
+  .dd-toggle:hover{color:var(--ink);background:#ffffff0d}
+  .dd-toggle input{accent-color:var(--accent);flex-shrink:0}
 
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
     background:#1a1d24;color:#fff;padding:10px 18px;border-radius:9px;font-size:13px;
@@ -215,7 +220,7 @@
       <!-- エクスポート ドロップダウン -->
       <div class="dropdown" id="exportDd">
         <button class="btn" id="exportDdBtn" title="ファイルに書き出す">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v13"/></svg>
           <span class="label">エクスポート</span>
           <svg class="dd-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
         </button>
@@ -223,6 +228,11 @@
           <button class="dd-item" id="exportSvgItem">SVG</button>
           <button class="dd-item" id="exportPngItem">PNG</button>
           <button class="dd-item" id="exportJpgItem">JPG</button>
+          <div class="dd-sep"></div>
+          <label class="dd-toggle">
+            <input type="checkbox" id="bgWhite" checked>
+            背景を白にする
+          </label>
         </div>
       </div>
       <button class="btn primary" id="saveBtn" title="現在の図に名前を付けて保存">
@@ -271,7 +281,6 @@
       <div class="canvas-head">
         <span class="ch-label">製図台</span>
         <div class="spacer" style="flex:1"></div>
-        <label class="toggle"><input type="checkbox" id="bgWhite" checked>PNG背景を白に</label>
         <div class="grp md-nav" id="mdNav" style="display:none">
           <button class="iconbtn" id="mdPrev" title="前の図"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
           <span class="zoomval" id="mdLabel">図 1/1</span>
@@ -660,7 +669,13 @@ function makeDropdown(btnId, menuId){
 }
 makeDropdown('copyDdBtn','copyDdMenu');
 makeDropdown('exportDdBtn','exportDdMenu');
-document.addEventListener('click',()=>document.querySelectorAll('.dd-menu.open').forEach(m=>m.classList.remove('open')));
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.dropdown')) document.querySelectorAll('.dd-menu.open').forEach(m=>m.classList.remove('open'));
+});
+// dd-item クリックでメニューを閉じる（トグルラベルは閉じない）
+document.querySelectorAll('.dd-item').forEach(el=>el.addEventListener('click',()=>{
+  document.querySelectorAll('.dd-menu.open').forEach(m=>m.classList.remove('open'));
+}));
 
 document.getElementById('copySvgItem').addEventListener('click',()=>doCopySvg());
 document.getElementById('copyPngItem').addEventListener('click',()=>doCopyRaster('image/png','PNG'));
