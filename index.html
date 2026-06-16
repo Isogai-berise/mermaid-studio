@@ -850,13 +850,7 @@ async function initFirebase(){
 async function fbSignIn(){
   if(!fb) return;
   try{ await fb.authMod.signInWithPopup(fb.auth, fb.provider); }
-  catch(e){
-    console.error('[Auth] ログインエラー:', e);
-    const code=e.code||'(コードなし)';
-    const msg=e.message||'(メッセージなし)';
-    showToast('ログインに失敗：'+code);
-    window.alert('ログインエラー詳細\nコード: '+code+'\nメッセージ: '+msg);
-  }
+  catch(e){ showToast('ログインに失敗：'+(e.code||e.message)); }
 }
 async function fbSignOut(){ if(fb){ await fb.authMod.signOut(fb.auth); showToast('ログアウトしました'); } }
 authBtn.addEventListener('click',()=> fbUser ? fbSignOut() : fbSignIn());
