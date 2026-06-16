@@ -193,6 +193,36 @@
   @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
   .mfield input.shake{animation:shake .35s ease;border-color:var(--err)}
 
+  /* ---- file explorer ---- */
+  .exp-modal{width:460px;max-height:80vh;display:flex;flex-direction:column;padding-bottom:0}
+  .exp-body{flex:1;overflow-y:auto;margin:0 -26px;padding:4px 10px 12px;
+    scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+  .exp-folder{margin-bottom:1px}
+  .exp-folder-head{display:flex;align-items:center;gap:8px;padding:8px 10px;
+    border-radius:8px;cursor:pointer;user-select:none;transition:.12s}
+  .exp-folder-head:hover{background:#ffffff0d}
+  .exp-chevron{width:13px;height:13px;flex-shrink:0;color:var(--muted);transition:transform .15s}
+  .exp-folder-head.open .exp-chevron{transform:rotate(90deg)}
+  .exp-fi{width:15px;height:15px;flex-shrink:0}
+  .exp-folder-icon{color:#d4a744}
+  .exp-file-icon{color:var(--muted)}
+  .exp-folder-name{font-size:13px;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .exp-folder-count{font-size:11px;color:var(--muted);font-family:var(--mono);flex-shrink:0}
+  .exp-folder-files{padding-left:33px;padding-bottom:4px}
+  .exp-file{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;
+    cursor:pointer;transition:.12s;position:relative}
+  .exp-file:hover{background:#ffffff0d}
+  .exp-file-name{font-size:13px;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .exp-file-date{font-size:11px;color:#4a505c;font-family:var(--mono);flex-shrink:0}
+  .exp-file-del{display:none;place-items:center;width:22px;height:22px;flex-shrink:0;
+    border-radius:5px;color:var(--muted);transition:.12s;margin-left:2px}
+  .exp-file:hover .exp-file-del{display:grid}
+  .exp-file-del:hover{color:var(--err);background:rgba(255,90,95,.12)}
+  .exp-file-del svg{width:12px;height:12px}
+  .exp-sep{height:1px;background:var(--border);margin:8px 10px}
+  .exp-loading{padding:10px 10px;font-size:12px;color:var(--muted);font-family:var(--mono)}
+  .exp-empty{padding:48px 20px;text-align:center;font-size:13px;color:var(--muted);line-height:1.7}
+
   @media (max-width:980px){ .actions .label{display:none} }
   @media (max-width:760px){
     .work{flex-direction:column}
@@ -287,8 +317,10 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 11v6M9 14h6"/></svg>
             新規作成
           </button>
-          <label>保存済み</label>
-          <select id="saved"><option value="">（保存した図）</option></select>
+          <button class="txtbtn" id="explorerBtn" title="保存済みプロジェクトをフォルダ形式で開く">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            フォルダを開く
+          </button>
         </div>
         <!-- 2行目: md読込 / テンプレート -->
         <div class="eh-row">
@@ -333,6 +365,26 @@
         <div class="empty" id="empty">図がここに描画されます</div>
       </div>
     </section>
+  </div>
+</div>
+<!-- file explorer modal -->
+<div class="modal-backdrop" id="explorerModal">
+  <div class="modal exp-modal">
+    <div class="modal-head">
+      <span class="modal-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="color:var(--accent)"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        保存済みプロジェクト
+      </span>
+      <button class="modal-close" id="explorerClose" aria-label="閉じる">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="exp-body" id="explorerBody">
+      <div class="exp-loading">読み込み中…</div>
+    </div>
+    <div class="modal-foot" style="padding-top:14px">
+      <button class="btn" id="explorerCancel">閉じる</button>
+    </div>
   </div>
 </div>
 <!-- save modal -->
@@ -474,18 +526,19 @@ const projectBox = document.getElementById('projectBox');
 const projectName = document.getElementById('projectName');
 const projectDel = document.getElementById('projectDel');
 
-let currentProjectId=null, currentProjectType=null, currentOwnerUid=null;
+let currentProjectId=null, currentProjectType=null, currentOwnerUid=null, currentProjectFolder='';
 
 function updateProjectDelBtn(){
   const isOwner = currentOwnerUid && fbUser && fbUser.uid===currentOwnerUid;
   projectDel.style.display = isOwner ? 'grid' : 'none';
 }
-// opts: { id, type:'saved'|'shared', ownerUid }
+// opts: { id, type:'saved'|'shared', ownerUid, folder }
 function setProject(name, opts){
   opts=opts||{};
   currentProjectId=opts.id||null;
   currentProjectType=opts.type||null;
   currentOwnerUid=opts.ownerUid||null;
+  currentProjectFolder=opts.folder!==undefined?opts.folder:'';
   if(name){
     projectName.textContent=name; projectName.className='';
     updateProjectDelBtn();
@@ -501,12 +554,11 @@ projectDel.addEventListener('click',async()=>{
   try{
     const {doc,deleteDoc}=fb.fsMod;
     if(currentProjectType==='saved'){
+      const folderSnap=currentProjectFolder;
       await deleteDoc(doc(fb.db,'users',fbUser.uid,'diagrams',currentProjectId));
-      refreshSaved('');
-    }else if(currentProjectType==='shared'){
-      await deleteDoc(doc(fb.db,'shared',currentProjectId));
+      updateFolderMeta(folderSnap,-1);
     }
-    editor.value=''; tplSel.value=''; savedSel.value='';
+    editor.value=''; tplSel.value='';
     updateGutter(); resetView();
     stage.innerHTML=''; empty.style.display='grid';
     hideError(); statusText.textContent='準備完了';
@@ -810,8 +862,6 @@ document.getElementById('editToggle').addEventListener('click',()=>{
 // ---- save to Firestore ----
 // ユーザーごとに users/{uid}/diagrams/{docId} に保存する。
 // Firebase 未初期化・未ログイン時はドロップダウンに案内を表示するだけで壊れない。
-const savedSel=document.getElementById('saved');
-
 function defaultName(){
   const first=(editor.value.trim().split('\n')[0]||'図').replace(/\s+/g,' ').slice(0,28);
   return first||'無題の図';
@@ -823,39 +873,143 @@ function parsePath(path){
   return {folder:segs.join('/'), name};
 }
 
-function refreshSaved(selectId){
-  savedSel.innerHTML='';
-  const ph=document.createElement('option'); ph.value='';
-  if(!USE_FIREBASE||!fb||!fbUser){
-    ph.textContent='（ログインして保存）'; savedSel.appendChild(ph); return;
+let explorerCache={};
+function refreshSaved(){ explorerCache={}; }
+
+// ---- folder meta (users/{uid}/meta/index) ----
+async function updateFolderMeta(folder, delta){
+  if(!fb||!fbUser) return;
+  explorerCache={};
+  const key=folder||'__root__';
+  const {doc,updateDoc,setDoc,increment}=fb.fsMod;
+  const ref=doc(fb.db,'users',fbUser.uid,'meta','index');
+  try{
+    await updateDoc(ref,{[`folders.${key}`]:increment(delta)});
+  }catch(e){
+    if(e.code==='not-found') await setDoc(ref,{folders:{[key]:Math.max(0,delta)}});
+    else console.error('updateFolderMeta:',e);
   }
-  ph.textContent='（読み込み中…）'; savedSel.appendChild(ph);
-  const {collection,query,orderBy,getDocs}=fb.fsMod;
-  getDocs(query(collection(fb.db,'users',fbUser.uid,'diagrams'),orderBy('ts','desc')))
-    .then(snap=>{
-      const items=snap.docs.map(d=>({id:d.id,...d.data()}));
-      savedSel.innerHTML='';
-      const ph2=document.createElement('option'); ph2.value='';
-      ph2.textContent=items.length?`（保存した図・${items.length}件）`:'（保存した図）';
-      savedSel.appendChild(ph2);
-      const groups={};
-      items.forEach(it=>{const f=it.folder||'';(groups[f]=groups[f]||[]).push(it);});
-      Object.keys(groups).sort((a,b)=>a.localeCompare(b)).forEach(folder=>{
-        const og=document.createElement('optgroup');
-        og.label=folder?'📁 '+folder.split('/').join(' / '):'（未分類）';
-        groups[folder].sort((a,b)=>a.name.localeCompare(b.name)).forEach(it=>{
-          const o=document.createElement('option'); o.value=it.id; o.textContent=it.name; og.appendChild(o);
-        });
-        savedSel.appendChild(og);
-      });
-      savedSel.value=selectId||'';
-    })
-    .catch(e=>{
-      savedSel.innerHTML='';
-      const pe=document.createElement('option'); pe.value=''; pe.textContent='（読み込みエラー）';
-      savedSel.appendChild(pe);
-      console.error('refreshSaved:',e);
+}
+
+// ---- file explorer ----
+async function openExplorer(){
+  if(!USE_FIREBASE||!fb){showToast('Firebaseが初期化されていません');return;}
+  if(!fbUser){showToast('ログインが必要です');fbSignIn();return;}
+  const modal=document.getElementById('explorerModal');
+  const body=document.getElementById('explorerBody');
+  modal.classList.add('open');
+  body.innerHTML='<div class="exp-loading">読み込み中…</div>';
+  try{
+    const {doc,getDoc}=fb.fsMod;
+    const snap=await getDoc(doc(fb.db,'users',fbUser.uid,'meta','index'));
+    const folders=snap.exists()?(snap.data().folders||{}):{};
+    renderExplorer(body,folders);
+  }catch(e){
+    body.innerHTML='<div class="exp-empty">読み込みに失敗しました</div>';
+    console.error('openExplorer:',e);
+  }
+}
+function closeExplorer(){
+  document.getElementById('explorerModal').classList.remove('open');
+}
+document.getElementById('explorerClose').addEventListener('click',closeExplorer);
+document.getElementById('explorerCancel').addEventListener('click',closeExplorer);
+document.getElementById('explorerModal').addEventListener('click',e=>{
+  if(e.target===document.getElementById('explorerModal')) closeExplorer();
+});
+
+function renderExplorer(body,folders){
+  const keys=Object.keys(folders)
+    .filter(k=>(folders[k]||0)>0)
+    .sort((a,b)=>{
+      if(a==='__root__') return -1; if(b==='__root__') return 1;
+      return a.localeCompare(b,'ja');
     });
+  if(!keys.length){
+    body.innerHTML='<div class="exp-empty">保存済みのプロジェクトがありません。<br>「保存」ボタンで図を保存してみましょう。</div>';
+    return;
+  }
+  body.innerHTML='';
+  keys.forEach(k=>{
+    const name=k==='__root__'?'未分類':k;
+    body.appendChild(buildFolderEl(k,name,folders[k]||0));
+  });
+}
+
+function buildFolderEl(key,displayName,count){
+  const div=document.createElement('div');
+  div.className='exp-folder';
+  div.innerHTML=`
+    <div class="exp-folder-head">
+      <svg class="exp-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
+      <svg class="exp-fi exp-folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      <span class="exp-folder-name">${displayName}</span>
+      <span class="exp-folder-count">${count}件</span>
+    </div>
+    <div class="exp-folder-files" style="display:none"></div>`;
+  const head=div.querySelector('.exp-folder-head');
+  const files=div.querySelector('.exp-folder-files');
+  head.addEventListener('click',()=>toggleExpFolder(head,key,files));
+  return div;
+}
+
+async function toggleExpFolder(head,key,filesEl){
+  const isOpen=head.classList.contains('open');
+  if(isOpen){ head.classList.remove('open'); filesEl.style.display='none'; return; }
+  head.classList.add('open'); filesEl.style.display='block';
+  if(explorerCache[key]){ renderExpFiles(filesEl,explorerCache[key],key); return; }
+  filesEl.innerHTML='<div class="exp-loading">読み込み中…</div>';
+  try{
+    const {collection,query,where,orderBy,getDocs}=fb.fsMod;
+    const folderVal=key==='__root__'?'':key;
+    const snap=await getDocs(query(
+      collection(fb.db,'users',fbUser.uid,'diagrams'),
+      where('folder','==',folderVal),
+      orderBy('ts','desc')
+    ));
+    const items=snap.docs.map(d=>({id:d.id,...d.data()}));
+    explorerCache[key]=items;
+    renderExpFiles(filesEl,items,key);
+  }catch(e){
+    filesEl.innerHTML='<div class="exp-loading">読み込みに失敗しました</div>';
+    console.error('toggleExpFolder:',e);
+  }
+}
+
+function renderExpFiles(filesEl,items,folderKey){
+  if(!items.length){ filesEl.innerHTML='<div class="exp-loading">（空のフォルダ）</div>'; return; }
+  filesEl.innerHTML='';
+  items.forEach(it=>{
+    const dateStr=it.ts?.toDate
+      ?it.ts.toDate().toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'}):'';
+    const el=document.createElement('div');
+    el.className='exp-file';
+    el.innerHTML=`
+      <svg class="exp-fi exp-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+      <span class="exp-file-name">${it.name}</span>
+      <span class="exp-file-date">${dateStr}</span>
+      <button class="exp-file-del" title="削除" data-id="${it.id}" data-folder="${it.folder||''}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+      </button>`;
+    el.addEventListener('click',e=>{
+      if(e.target.closest('.exp-file-del')) return;
+      closeExplorer(); loadSaved(it.id);
+    });
+    el.querySelector('.exp-file-del').addEventListener('click',async e=>{
+      e.stopPropagation();
+      const btn=e.currentTarget;
+      await deleteSaved(btn.dataset.id, btn.dataset.folder);
+      delete explorerCache[folderKey];
+      // refresh folder
+      const filesElParent=btn.closest('.exp-folder-files');
+      const head=filesElParent?.previousElementSibling;
+      if(head?.classList.contains('open')){
+        await toggleExpFolder(head,folderKey,filesElParent);
+        await toggleExpFolder(head,folderKey,filesElParent);
+      }
+    });
+    filesEl.appendChild(el);
+  });
 }
 
 function openSaveModal(){
@@ -906,8 +1060,8 @@ async function saveCurrent(){
     const {collection,addDoc,serverTimestamp}=fb.fsMod;
     const ref=await addDoc(collection(fb.db,'users',fbUser.uid,'diagrams'),
       {name,folder,code:editor.value,ts:serverTimestamp()});
-    refreshSaved(ref.id);
-    setProject((folder?folder+' / ':'')+name, {id:ref.id, type:'saved', ownerUid:fbUser.uid});
+    await updateFolderMeta(folder,1);
+    setProject((folder?folder+' / ':'')+name, {id:ref.id, type:'saved', ownerUid:fbUser.uid, folder});
     showToast('保存しました');
   }catch(e){
     showToast('保存に失敗しました：'+(e.code||e.message));
@@ -926,23 +1080,27 @@ async function loadSaved(id){
     tplSel.value='';
     updateGutter(); resetView(); render().then(fit);
     setProject((it.folder?it.folder+' / ':'')+it.name,
-      {id, type:'saved', ownerUid:fbUser.uid});
+      {id, type:'saved', ownerUid:fbUser.uid, folder:it.folder||''});
   }catch(e){
     showToast('読み込みに失敗：'+(e.code||e.message));
     console.error('loadSaved:',e);
   }
 }
 
-async function deleteSaved(id){
+async function deleteSaved(id, folderHint){
   if(!fb||!fbUser) return;
   try{
     const {doc,getDoc,deleteDoc}=fb.fsMod;
-    const snap=await getDoc(doc(fb.db,'users',fbUser.uid,'diagrams',id));
-    const it=snap.exists()?snap.data():{name:'この図'};
-    const full=(it.folder?it.folder+' / ':'')+it.name;
-    try{if(!window.confirm(`「${full}」を削除しますか？`)) return;}catch(e){}
+    let folderVal=folderHint!==undefined?folderHint:null;
+    if(folderVal===null){
+      const snap=await getDoc(doc(fb.db,'users',fbUser.uid,'diagrams',id));
+      const it=snap.exists()?snap.data():{};
+      folderVal=it.folder||'';
+    }
+    try{if(!window.confirm('削除しますか？')) return;}catch(e){}
     await deleteDoc(doc(fb.db,'users',fbUser.uid,'diagrams',id));
-    refreshSaved('');
+    await updateFolderMeta(folderVal,-1);
+    if(currentProjectId===id) setProject(null);
     showToast('削除しました');
   }catch(e){
     showToast('削除に失敗：'+(e.code||e.message));
@@ -954,7 +1112,7 @@ document.getElementById('newBtn').addEventListener('click',()=>{
   if(editor.value.trim()){
     try{if(!window.confirm('現在の内容を破棄して新規作成しますか？'))return;}catch(e){}
   }
-  editor.value=''; tplSel.value=''; savedSel.value='';
+  editor.value=''; tplSel.value='';
   updateGutter(); resetView();
   stage.innerHTML=''; empty.style.display='grid';
   hideError(); statusText.textContent='準備完了';
@@ -967,7 +1125,7 @@ document.getElementById('saveBtn').addEventListener('click',()=>{
   }
   saveCurrent();
 });
-savedSel.addEventListener('change',e=>{ if(e.target.value) loadSaved(e.target.value); });
+document.getElementById('explorerBtn').addEventListener('click', openExplorer);
 
 // ---- load Mermaid diagrams from a local .md file ----
 const mdBtn=document.getElementById('mdBtn');
@@ -989,7 +1147,7 @@ function showMdBlock(i){
   if(!mdBlocks.length) return;
   mdIndex=(i+mdBlocks.length)%mdBlocks.length;
   editor.value=mdBlocks[mdIndex];
-  tplSel.value=''; savedSel.value='';
+  tplSel.value='';
   updateGutter(); resetView(); render().then(fit);
   updateMdNav();
   setProject(mdBlocks.length>1 ? `${mdFileName}  (${mdIndex+1}/${mdBlocks.length})` : mdFileName);
