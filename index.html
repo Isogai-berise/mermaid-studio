@@ -50,9 +50,14 @@
   .btn.primary:hover{background:#ff7d60}
   .btn svg{width:14px;height:14px}
   .auth-avatar{width:20px;height:20px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1.5px solid rgba(255,255,255,.2)}
-  .project-label{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);
-    font-family:var(--mono);padding-left:14px;border-left:1px solid var(--border);max-width:220px;
-    overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .project-box{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);
+    font-family:var(--mono);padding:3px 8px 3px 10px;border:1px solid var(--border);border-radius:7px;
+    max-width:260px;overflow:hidden;white-space:nowrap}
+  .project-box span{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+  .project-del{display:grid;place-items:center;width:18px;height:18px;flex-shrink:0;
+    border-radius:4px;color:var(--muted);transition:.12s}
+  .project-del:hover{color:var(--err);background:rgba(255,90,95,.12)}
+  .project-del svg{width:12px;height:12px}
 
   /* ---- workspace split ---- */
   .work{flex:1;display:flex;min-height:0}
@@ -160,9 +165,12 @@
     </div>
     <span class="vo-badge" id="voBadge">閲覧専用</span>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">準備完了</span></div>
-    <div class="project-label" id="projectLabel" style="display:none">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+    <div class="project-box" id="projectBox" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
       <span id="projectName"></span>
+      <button class="project-del" id="projectDel" title="このプロジェクトを削除" style="display:none">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+      </button>
     </div>
     <div class="spacer"></div>
     <div class="actions">
@@ -368,13 +376,48 @@ const errText = document.getElementById('errText');
 const tplSel = document.getElementById('tpl');
 const zoomVal = document.getElementById('zoomVal');
 const toast = document.getElementById('toast');
-const projectLabel = document.getElementById('projectLabel');
+const projectBox = document.getElementById('projectBox');
 const projectName = document.getElementById('projectName');
+const projectDel = document.getElementById('projectDel');
 
-function setProject(name){
-  if(name){ projectName.textContent=name; projectLabel.style.display='flex'; }
-  else{ projectLabel.style.display='none'; projectName.textContent=''; }
+let currentProjectId=null, currentProjectType=null, currentOwnerUid=null;
+
+function updateProjectDelBtn(){
+  const isOwner = currentOwnerUid && fbUser && fbUser.uid===currentOwnerUid;
+  projectDel.style.display = isOwner ? 'grid' : 'none';
 }
+// opts: { id, type:'saved'|'shared', ownerUid }
+function setProject(name, opts){
+  opts=opts||{};
+  currentProjectId=opts.id||null;
+  currentProjectType=opts.type||null;
+  currentOwnerUid=opts.ownerUid||null;
+  if(name){ projectName.textContent=name; projectBox.style.display='flex'; updateProjectDelBtn(); }
+  else{ projectBox.style.display='none'; projectName.textContent=''; projectDel.style.display='none'; }
+}
+projectDel.addEventListener('click',async()=>{
+  if(!currentProjectId||!currentProjectType||!fb||!fbUser) return;
+  const label=projectName.textContent;
+  try{if(!window.confirm(`「${label}」を削除しますか？`)) return;}catch(e){}
+  try{
+    const {doc,deleteDoc}=fb.fsMod;
+    if(currentProjectType==='saved'){
+      await deleteDoc(doc(fb.db,'users',fbUser.uid,'diagrams',currentProjectId));
+      refreshSaved('');
+    }else if(currentProjectType==='shared'){
+      await deleteDoc(doc(fb.db,'shared',currentProjectId));
+    }
+    editor.value=''; tplSel.value=''; savedSel.value='';
+    updateGutter(); resetView();
+    stage.innerHTML=''; empty.style.display='grid';
+    hideError(); statusText.textContent='準備完了';
+    setProject(null);
+    showToast('削除しました');
+  }catch(e){
+    showToast('削除に失敗：'+(e.code||e.message));
+    console.error('projectDel:',e);
+  }
+});
 
 let renderId = 0;
 let currentSvg = null;
@@ -704,7 +747,8 @@ async function loadSaved(id){
     editor.value=it.code||'';
     tplSel.value='';
     updateGutter(); resetView(); render().then(fit);
-    setProject((it.folder?it.folder+' / ':'')+it.name);
+    setProject((it.folder?it.folder+' / ':'')+it.name,
+      {id, type:'saved', ownerUid:fbUser.uid});
   }catch(e){
     showToast('読み込みに失敗：'+(e.code||e.message));
     console.error('loadSaved:',e);
@@ -810,9 +854,10 @@ async function loadShared(id){
     const {doc,getDoc}=fb.fsMod;
     const snap=await getDoc(doc(fb.db,'shared',id));
     if(!snap.exists()){setStatus('error');showError('共有リンクが見つかりません');showToast('見つかりません');return;}
-    editor.value=snap.data().code||'';
+    const sd=snap.data();
+    editor.value=sd.code||'';
     updateGutter(); resetView(); render().then(fit);
-    setProject('共有リンク');
+    setProject('共有リンク', {id, type:'shared', ownerUid:sd.ownerUid});
     showToast('共有リンクを読み込みました');
   }catch(e){
     setStatus('error');
@@ -837,6 +882,7 @@ function updateAuthUI(){
     avatar.style.display='none'; gIcon.style.display='block';
     lbl.textContent='ログイン'; authBtn.title='Googleでログイン';
   }
+  updateProjectDelBtn();
 }
 async function initFirebase(){
   if(!USE_FIREBASE){ updateAuthUI(); return; }
