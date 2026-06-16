@@ -67,6 +67,8 @@
   .headbtn svg{width:14px;height:14px}
   select{font-family:var(--sans);font-size:12.5px;background:#1f232c;color:var(--ink);
     border:1px solid var(--border);border-radius:6px;padding:5px 8px;cursor:pointer}
+  select optgroup{background:#1f232c;color:var(--accent);font-weight:600;font-style:normal}
+  select option{background:#1f232c;color:var(--ink);font-weight:400}
   .editor-wrap{flex:1;display:flex;min-height:0;position:relative;font-family:var(--mono);
     font-size:13.5px;line-height:1.65}
   .gutter{padding:14px 10px 14px 14px;text-align:right;color:#4a505c;background:var(--editor-bg);
@@ -560,29 +562,51 @@ function saveAll(arr){
   try{localStorage.setItem(STORE_KEY,JSON.stringify(arr));return true;}catch(e){return false;}
 }
 function refreshSaved(selectId){
-  const items=loadAll().sort((a,b)=>b.ts-a.ts);
+  const items=loadAll();
   savedSel.innerHTML='';
   const ph=document.createElement('option');
   ph.value=''; ph.textContent=items.length?`（保存した図・${items.length}件）`:'（保存した図）';
   savedSel.appendChild(ph);
-  items.forEach(it=>{const o=document.createElement('option');o.value=it.id;o.textContent=it.name;savedSel.appendChild(o);});
+  // フォルダ（階層）ごとにグループ化して表示
+  const groups={};
+  items.forEach(it=>{const f=it.folder||''; (groups[f]=groups[f]||[]).push(it);});
+  Object.keys(groups).sort((a,b)=>a.localeCompare(b)).forEach(folder=>{
+    const og=document.createElement('optgroup');
+    og.label = folder ? '📁 '+folder.split('/').join(' / ') : '（未分類）';
+    groups[folder].sort((a,b)=>a.name.localeCompare(b.name)).forEach(it=>{
+      const o=document.createElement('option'); o.value=it.id; o.textContent=it.name; og.appendChild(o);
+    });
+    savedSel.appendChild(og);
+  });
   savedSel.value=selectId||'';
 }
 function defaultName(){
   const first=(editor.value.trim().split('\n')[0]||'図').replace(/\s+/g,' ').slice(0,28);
   return first||'無題の図';
 }
+// パス文字列を {folder, name} に分解。"a/b/図" → folder:"a/b", name:"図"
+function parsePath(path){
+  const segs=(path||'').split('/').map(s=>s.trim()).filter(Boolean);
+  if(!segs.length) return {folder:'', name:defaultName()};
+  const name=segs.pop();
+  return {folder:segs.join('/'), name};
+}
 function saveCurrent(){
   if(!editor.value.trim()){showToast('まず図を入力してください');return;}
   if(!canStore){showToast('このプレビューでは保存できません（デプロイ先では保存できます）');return;}
-  let name;
-  try{name=window.prompt('保存名を入力してください',defaultName());}catch(e){name=defaultName();}
-  if(name===null) return;                 // キャンセル
-  name=(name||'').trim()||defaultName();
+  // 選択中の図と同じフォルダを初期値に入れておく
+  let prefill='';
+  const cur=loadAll().find(x=>x.id===savedSel.value);
+  if(cur && cur.folder) prefill=cur.folder+'/';
+  let path;
+  try{ path=window.prompt('保存先のパスを入力（「/」で階層を区切れます）\n例: プロジェクトA/設計/ログイン図', prefill+defaultName()); }
+  catch(e){ path=prefill+defaultName(); }
+  if(path===null) return;                 // キャンセル
+  const {folder,name}=parsePath(path);
   const items=loadAll();
   const id='d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-  items.push({id,name,code:editor.value,theme:themeSel.value,ts:Date.now()});
-  if(saveAll(items)){refreshSaved(id);showToast('保存しました：'+name);}
+  items.push({id,name,folder,code:editor.value,theme:themeSel.value,ts:Date.now()});
+  if(saveAll(items)){refreshSaved(id);showToast('保存しました：'+(folder?folder+' / ':'')+name);}
   else showToast('保存に失敗しました');
 }
 function loadSaved(id){
@@ -599,7 +623,8 @@ function deleteSaved(id){
   const items=loadAll();
   const it=items.find(x=>x.id===id);
   if(!it) return;
-  try{if(!window.confirm(`「${it.name}」を削除しますか？`)) return;}catch(e){}
+  const full=(it.folder?it.folder+' / ':'')+it.name;
+  try{if(!window.confirm(`「${full}」を削除しますか？`)) return;}catch(e){}
   saveAll(items.filter(x=>x.id!==id));
   refreshSaved('');
   showToast('削除しました');
