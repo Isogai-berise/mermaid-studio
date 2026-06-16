@@ -705,8 +705,11 @@ viewport.addEventListener('wheel',e=>{
 },{passive:false});
 
 let dragging=false,sx,sy;
-viewport.addEventListener('pointerdown',e=>{dragging=true;sx=e.clientX-tx;sy=e.clientY-ty;
-  viewport.classList.add('grabbing');viewport.setPointerCapture(e.pointerId);});
+viewport.addEventListener('pointerdown',e=>{
+  if(e.target.closest('button,a,input,select')) return;
+  dragging=true;sx=e.clientX-tx;sy=e.clientY-ty;
+  viewport.classList.add('grabbing');viewport.setPointerCapture(e.pointerId);
+});
 viewport.addEventListener('pointermove',e=>{if(!dragging)return;tx=e.clientX-sx;ty=e.clientY-sy;applyTransform();});
 viewport.addEventListener('pointerup',()=>{dragging=false;viewport.classList.remove('grabbing');});
 
