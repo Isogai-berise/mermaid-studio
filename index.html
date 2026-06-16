@@ -194,6 +194,10 @@
     <!-- editor -->
     <section class="editor-pane">
       <div class="editor-head">
+        <button class="txtbtn" id="newBtn" title="新規作成（現在の内容を破棄）">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 11v6M9 14h6"/></svg>
+          新規作成
+        </button>
         <button class="txtbtn" id="mdBtn" title="ローカルのmdファイルからMermaid図を読み込む">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13l2 2 4-4"/></svg>
           md読込
@@ -700,6 +704,16 @@ async function deleteSaved(id){
   }
 }
 
+document.getElementById('newBtn').addEventListener('click',()=>{
+  if(editor.value.trim()){
+    try{if(!window.confirm('現在の内容を破棄して新規作成しますか？'))return;}catch(e){}
+  }
+  editor.value=''; tplSel.value=''; savedSel.value='';
+  updateGutter(); resetView();
+  stage.innerHTML=''; empty.style.display='grid';
+  hideError(); statusText.textContent='準備完了';
+  showToast('新規作成しました');
+});
 document.getElementById('saveBtn').addEventListener('click',saveCurrent);
 savedSel.addEventListener('change',e=>{ if(e.target.value) loadSaved(e.target.value); });
 document.getElementById('delSaved').addEventListener('click',()=>{
