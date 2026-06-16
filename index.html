@@ -194,10 +194,11 @@
     <!-- editor -->
     <section class="editor-pane">
       <div class="editor-head">
-        <button class="txtbtn" id="mdBtn" title="mdファイルのURLからMermaid図を読み込む">
+        <button class="txtbtn" id="mdBtn" title="ローカルのmdファイルからMermaid図を読み込む">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13l2 2 4-4"/></svg>
           md読込
         </button>
+        <input type="file" id="mdFile" accept=".md,.txt" style="display:none">
         <label>テンプレート</label>
         <select id="tpl"></select>
         <label>保存済み</label>
@@ -706,20 +707,13 @@ document.getElementById('delSaved').addEventListener('click',()=>{
   else showToast('削除する保存を選んでください');
 });
 
-// ---- load Mermaid diagrams from a .md file URL ----
+// ---- load Mermaid diagrams from a local .md file ----
 const mdBtn=document.getElementById('mdBtn');
+const mdFile=document.getElementById('mdFile');
 const mdNav=document.getElementById('mdNav');
 const mdLabel=document.getElementById('mdLabel');
 let mdBlocks=[], mdIndex=0;
 
-// GitHub の blob ページURLを raw に変換（よく貼られるため）
-function normalizeMdUrl(url){
-  url=(url||'').trim();
-  const m=url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/(.+)$/);
-  if(m) return `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}`;
-  return url;
-}
-// ```mermaid ... ``` のフェンスを全部取り出す
 function extractMermaid(md){
   const blocks=[]; const re=/```[ \t]*mermaid[^\n]*\n([\s\S]*?)```/gi; let m;
   while((m=re.exec(md))!==null){ const code=m[1].replace(/\s+$/,''); if(code.trim()) blocks.push(code); }
@@ -737,29 +731,19 @@ function showMdBlock(i){
   updateGutter(); resetView(); render().then(fit);
   updateMdNav();
 }
-async function loadFromMd(url){
-  const u=normalizeMdUrl(url);
-  showToast('mdを読み込み中…');
-  try{
-    const res=await fetch(u,{mode:'cors'});
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const text=await res.text();
-    const blocks=extractMermaid(text);
+mdBtn.addEventListener('click',()=>mdFile.click());
+mdFile.addEventListener('change',()=>{
+  const file=mdFile.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const blocks=extractMermaid(ev.target.result);
     if(!blocks.length){ showToast('mdの中にMermaid記法が見つかりませんでした'); return; }
     mdBlocks=blocks; showMdBlock(0);
-    showToast(`Mermaid図を${blocks.length}件読み込みました`);
-  }catch(e){
-    setStatus('error');
-    showError('mdを読み込めませんでした：'+(e.message||e)+
-      '\n（URLの誤り、または配信元がCORSを許可していない可能性があります。GitHubのrawリンクをお試しください）');
-    showToast('読み込みに失敗しました');
-  }
-}
-mdBtn.addEventListener('click',()=>{
-  let url;
-  try{ url=window.prompt('mdファイルのURLを入力（GitHubのrawリンク推奨）\n例: https://raw.githubusercontent.com/user/repo/main/README.md',''); }
-  catch(e){ url=''; }
-  if(url) loadFromMd(url);
+    showToast(`「${file.name}」からMermaid図を${blocks.length}件読み込みました`);
+  };
+  reader.onerror=()=>showToast('ファイルの読み込みに失敗しました');
+  reader.readAsText(file,'UTF-8');
+  mdFile.value=''; // 同じファイルを再選択できるようリセット
 });
 document.getElementById('mdPrev').addEventListener('click',()=>showMdBlock(mdIndex-1));
 document.getElementById('mdNext').addEventListener('click',()=>showMdBlock(mdIndex+1));
@@ -828,12 +812,7 @@ initFirebase();
 // 閲覧専用リンクならエディタを隠して図だけ表示
 if(isViewOnly()) applyViewOnly(true);
 
-const mdParam=getParam('md');
-if(mdParam){
-  // ?md=<URL>：mdからMermaidを抽出して表示
-  updateGutter();
-  loadFromMd(mdParam);
-}else{
+{
   const initial=getInitialCode();
   if(initial){
     editor.value=initial;
