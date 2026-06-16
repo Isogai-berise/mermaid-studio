@@ -48,13 +48,15 @@
   .btn:hover{color:var(--ink);background:#ffffff0d}
   .btn.primary{color:#fff;background:var(--accent)}
   .btn.primary:hover{background:#ff7d60}
+  .btn.primary.no-auth{background:var(--border);color:var(--muted);cursor:default}
+  .btn.primary.no-auth:hover{background:#2e323d;color:var(--muted)}
   .btn svg{width:14px;height:14px}
   .auth-avatar{width:20px;height:20px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1.5px solid rgba(255,255,255,.2)}
   .project-box{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);
     font-family:var(--mono);padding:3px 8px 3px 10px;border:1px solid var(--border);border-radius:7px;
     max-width:260px;overflow:hidden;white-space:nowrap}
   .project-box span{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
-  .project-box span.untitled{color:#4a505c;font-style:italic}
+  .project-box span.untitled{color:#6b7280;font-style:italic}
   .project-del{display:grid;place-items:center;width:18px;height:18px;flex-shrink:0;
     border-radius:4px;color:var(--muted);transition:.12s}
   .project-del:hover{color:var(--err);background:rgba(255,90,95,.12)}
@@ -66,9 +68,10 @@
   /* editor pane (drafting console) */
   .editor-pane{width:42%;min-width:280px;display:flex;flex-direction:column;
     background:var(--editor-bg);border-right:1px solid var(--border)}
-  .editor-head{display:flex;flex-direction:column;gap:6px;padding:9px 14px;
+  .editor-head{display:flex;flex-direction:column;gap:0;padding:0 14px;
     border-bottom:1px solid var(--editor-line);flex-shrink:0}
-  .eh-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .eh-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 0}
+  .eh-row+.eh-row{border-top:1px solid var(--editor-line)}
   .editor-head label{font-size:11px;color:var(--muted);text-transform:uppercase;
     letter-spacing:.1em;font-family:var(--mono)}
   .editor-head select{max-width:150px}
@@ -181,7 +184,6 @@
       <span class="name">Mermaid<b>Studio</b></span>
     </div>
     <span class="vo-badge" id="voBadge">閲覧専用</span>
-    <div class="status"><span class="dot" id="dot"></span><span id="statusText">準備完了</span></div>
     <div class="project-box" id="projectBox">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" style="flex-shrink:0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
       <span id="projectName" class="untitled">無題</span>
@@ -190,6 +192,7 @@
       </button>
     </div>
     <div class="spacer"></div>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">準備完了</span></div>
     <div class="actions">
       <button class="btn" id="authBtn" style="display:none" title="ログイン">
         <img class="auth-avatar" id="authAvatar" style="display:none" alt="">
@@ -235,7 +238,7 @@
           </label>
         </div>
       </div>
-      <button class="btn primary" id="saveBtn" title="現在の図に名前を付けて保存">
+      <button class="btn primary no-auth" id="saveBtn" title="保存にはログインが必要です">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
         <span class="label">保存</span>
       </button>
@@ -867,7 +870,12 @@ document.getElementById('newBtn').addEventListener('click',()=>{
   setProject(null);
   showToast('新規作成しました');
 });
-document.getElementById('saveBtn').addEventListener('click',saveCurrent);
+document.getElementById('saveBtn').addEventListener('click',()=>{
+  if(document.getElementById('saveBtn').classList.contains('no-auth')){
+    showToast('保存にはログインが必要です'); return;
+  }
+  saveCurrent();
+});
 savedSel.addEventListener('change',e=>{ if(e.target.value) loadSaved(e.target.value); });
 
 // ---- load Mermaid diagrams from a local .md file ----
@@ -947,7 +955,8 @@ async function loadShared(id){
 }
 
 function updateAuthUI(){
-  if(!USE_FIREBASE){ authBtn.style.display='none'; return; }
+  const saveBtn=document.getElementById('saveBtn');
+  if(!USE_FIREBASE){ authBtn.style.display='none'; saveBtn.classList.remove('no-auth'); return; }
   authBtn.style.display='inline-flex';
   const lbl=authBtn.querySelector('.label');
   const avatar=document.getElementById('authAvatar');
@@ -958,9 +967,13 @@ function updateAuthUI(){
     const name=(fbUser.displayName||fbUser.email||'').split(/[\s@]/)[0].slice(0,12);
     lbl.textContent=name||'ログイン済み';
     authBtn.title='ログアウト（'+fbUser.email+'）';
+    saveBtn.classList.remove('no-auth');
+    saveBtn.title='現在の図に名前を付けて保存';
   }else{
     avatar.style.display='none'; gIcon.style.display='block';
     lbl.textContent='ログイン'; authBtn.title='Googleでログイン';
+    saveBtn.classList.add('no-auth');
+    saveBtn.title='保存にはログインが必要です';
   }
   updateProjectDelBtn();
 }
