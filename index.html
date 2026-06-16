@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mermaid Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<style>
+  :root{
+    --bg:#0e1014; --editor-bg:#15181e; --editor-line:#1c2028;
+    --ink:#e6e8ec; --muted:#8a909c; --canvas:#fbfbf8; --canvas-ink:#1a1d24;
+    --accent:#ff6b4a; --accent-dim:rgba(255,107,74,.15);
+    --ok:#37d39b; --err:#ff5a5f; --border:#23262e;
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:'Inter',system-ui,-apple-system,sans-serif;
+    --display:'Space Grotesk',var(--sans);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--sans);background:var(--bg);color:var(--ink);overflow:hidden}
+  button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+  button:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+  .app{display:flex;flex-direction:column;height:100vh}
+
+  /* ---- top bar ---- */
+  .topbar{display:flex;align-items:center;gap:16px;padding:0 16px;height:54px;
+    background:var(--bg);border-bottom:1px solid var(--border);flex-shrink:0}
+  .brand{display:flex;align-items:center;gap:10px;user-select:none}
+  .brand svg{display:block}
+  .brand .name{font-family:var(--display);font-weight:600;letter-spacing:.14em;
+    font-size:13px;text-transform:uppercase}
+  .brand .name b{color:var(--accent);font-weight:600}
+  .status{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);
+    font-family:var(--mono);padding-left:14px;border-left:1px solid var(--border)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);
+    box-shadow:0 0 0 0 var(--ok);transition:background .2s}
+  .dot.err{background:var(--err)}
+  .dot.pulse{animation:pulse .5s ease-out}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(55,211,155,.5)}100%{box-shadow:0 0 0 7px rgba(55,211,155,0)}}
+  .spacer{flex:1}
+  .actions{display:flex;align-items:center;gap:6px}
+  .btn{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;
+    padding:7px 12px;border-radius:7px;color:var(--muted);transition:.15s}
+  .btn:hover{color:var(--ink);background:#ffffff0d}
+  .btn.primary{color:#fff;background:var(--accent)}
+  .btn.primary:hover{background:#ff7d60}
+  .btn svg{width:14px;height:14px}
+
+  /* ---- workspace split ---- */
+  .work{flex:1;display:flex;min-height:0}
+
+  /* editor pane (drafting console) */
+  .editor-pane{width:42%;min-width:280px;display:flex;flex-direction:column;
+    background:var(--editor-bg);border-right:1px solid var(--border)}
+  .editor-head{display:flex;align-items:center;gap:10px;padding:9px 14px;
+    border-bottom:1px solid var(--editor-line);flex-shrink:0}
+  .editor-head label{font-size:11px;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.1em;font-family:var(--mono)}
+  select{font-family:var(--sans);font-size:12.5px;background:#1f232c;color:var(--ink);
+    border:1px solid var(--border);border-radius:6px;padding:5px 8px;cursor:pointer}
+  .editor-wrap{flex:1;display:flex;min-height:0;position:relative;font-family:var(--mono);
+    font-size:13.5px;line-height:1.65}
+  .gutter{padding:14px 10px 14px 14px;text-align:right;color:#4a505c;background:var(--editor-bg);
+    white-space:pre;overflow:hidden;user-select:none;border-right:1px solid var(--editor-line)}
+  #editor{flex:1;resize:none;border:none;background:transparent;color:var(--ink);
+    padding:14px 16px;white-space:pre;overflow:auto;tab-size:2;
+    font-family:inherit;font-size:inherit;line-height:inherit;caret-color:var(--accent)}
+  #editor::placeholder{color:#4a505c}
+
+  .errbar{flex-shrink:0;display:none;gap:9px;align-items:flex-start;padding:10px 14px;
+    background:#2a181a;border-top:1px solid #43232a;color:#ffb0ac;
+    font-family:var(--mono);font-size:12px;line-height:1.5;max-height:120px;overflow:auto}
+  .errbar.show{display:flex}
+  .errbar svg{width:14px;height:14px;flex-shrink:0;margin-top:1px;color:var(--err)}
+
+  /* canvas pane (paper) */
+  .canvas-pane{flex:1;display:flex;flex-direction:column;background:var(--canvas);min-width:0}
+  .canvas-head{display:flex;align-items:center;gap:8px;padding:8px 12px;
+    border-bottom:1px solid #ececdf;flex-shrink:0;background:var(--canvas);color:#5b6068}
+  .canvas-head .grp{display:flex;align-items:center;gap:2px;background:#fff;
+    border:1px solid #e6e6db;border-radius:8px;padding:2px}
+  .iconbtn{width:30px;height:28px;display:grid;place-items:center;border-radius:6px;
+    color:#6b7280;transition:.12s}
+  .iconbtn:hover{background:#f0f0e8;color:#1a1d24}
+  .iconbtn svg{width:15px;height:15px}
+  .zoomval{font-family:var(--mono);font-size:11.5px;color:#9096a0;min-width:42px;text-align:center}
+  .canvas-head .ch-label{font-size:11px;text-transform:uppercase;letter-spacing:.1em;
+    font-family:var(--mono);color:#a8aca0}
+  .toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;cursor:pointer;user-select:none}
+  .toggle input{accent-color:var(--accent)}
+
+  .viewport{flex:1;position:relative;overflow:hidden;cursor:grab;
+    background-color:var(--canvas);
+    background-image:radial-gradient(circle,rgba(20,25,35,.07) 1px,transparent 1px);
+    background-size:22px 22px}
+  .viewport.grabbing{cursor:grabbing}
+  #stage{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
+  #stage svg{display:block;max-width:none!important;height:auto}
+  .empty{position:absolute;inset:0;display:grid;place-items:center;color:#b5b9af;
+    font-size:13px;pointer-events:none}
+
+  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:#1a1d24;color:#fff;padding:10px 18px;border-radius:9px;font-size:13px;
+    box-shadow:0 8px 30px rgba(0,0,0,.3);opacity:0;transition:.25s;pointer-events:none;z-index:50}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media (max-width:760px){
+    .work{flex-direction:column}
+    .editor-pane{width:100%;height:46%;min-width:0;border-right:none;border-bottom:1px solid var(--border)}
+    .canvas-pane{flex:1}
+    .actions .label{display:none}
+    .status{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- top bar -->
+  <header class="topbar">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M2 16c2.5 0 2.5-4 5-4s2.5 4 5 4 2.5-4 5-4 2.5 4 5 4" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"/>
+        <path d="M2 10c2.5 0 2.5-4 5-4s2.5 4 5 4 2.5-4 5-4 2.5 4 5 4" stroke="#566" stroke-width="2" stroke-linecap="round" opacity=".5"/>
+      </svg>
+      <span class="name">Mermaid<b>Studio</b></span>
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span id="statusText">準備完了</span></div>
+    <div class="spacer"></div>
+    <div class="actions">
+      <button class="btn" id="copyBtn" title="SVGコードをコピー">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+        <span class="label">SVGコピー</span>
+      </button>
+      <button class="btn" id="svgBtn" title="SVGとして保存">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+        <span class="label">SVG</span>
+      </button>
+      <button class="btn primary" id="pngBtn" title="高解像度PNGとして保存">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+        <span class="label">PNG保存</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="work">
+    <!-- editor -->
+    <section class="editor-pane">
+      <div class="editor-head">
+        <label>テンプレート</label>
+        <select id="tpl"></select>
+        <label style="margin-left:auto">テーマ</label>
+        <select id="theme">
+          <option value="default">Default</option>
+          <option value="neutral">Neutral</option>
+          <option value="dark">Dark</option>
+          <option value="forest">Forest</option>
+          <option value="base">Base</option>
+        </select>
+      </div>
+      <div class="editor-wrap">
+        <div class="gutter" id="gutter">1</div>
+        <textarea id="editor" spellcheck="false" placeholder="ここに Mermaid 記法を入力…"></textarea>
+      </div>
+      <div class="errbar" id="errbar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <span id="errText"></span>
+      </div>
+    </section>
+
+    <!-- canvas -->
+    <section class="canvas-pane">
+      <div class="canvas-head">
+        <span class="ch-label">製図台</span>
+        <div class="spacer" style="flex:1"></div>
+        <label class="toggle"><input type="checkbox" id="bgWhite" checked>PNG背景を白に</label>
+        <div class="grp">
+          <button class="iconbtn" id="zoomOut" title="縮小"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+          <span class="zoomval" id="zoomVal">100%</span>
+          <button class="iconbtn" id="zoomIn" title="拡大"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+        </div>
+        <button class="iconbtn" id="fitBtn" title="全体表示"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M16 21h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg></button>
+      </div>
+      <div class="viewport" id="viewport">
+        <div id="stage"></div>
+        <div class="empty" id="empty">図がここに描画されます</div>
+      </div>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const templates = {
+  "フローチャート": `graph TD
+  A[開始] --> B{条件は?}
+  B -->|はい| C[処理を実行]
+  B -->|いいえ| D[スキップ]
+  C --> E[終了]
+  D --> E`,
+  "シーケンス図": `sequenceDiagram
+  participant U as ユーザー
+  participant S as サーバー
+  participant DB as データベース
+  U->>S: ログイン要求
+  S->>DB: 認証情報を確認
+  DB-->>S: 結果を返す
+  S-->>U: トークンを発行`,
+  "クラス図": `classDiagram
+  class Animal {
+    +String name
+    +int age
+    +makeSound()
+  }
+  class Dog {
+    +fetch()
+  }
+  class Cat {
+    +scratch()
+  }
+  Animal <|-- Dog
+  Animal <|-- Cat`,
+  "状態遷移図": `stateDiagram-v2
+  [*] --> 待機中
+  待機中 --> 処理中 : 開始
+  処理中 --> 完了 : 成功
+  処理中 --> エラー : 失敗
+  エラー --> 待機中 : 再試行
+  完了 --> [*]`,
+  "ER図": `erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--|{ LINE_ITEM : contains
+  CUSTOMER {
+    string name
+    string email
+  }
+  ORDER {
+    int id
+    date created_at
+  }`,
+  "ガントチャート": `gantt
+  title プロジェクト計画
+  dateFormat YYYY-MM-DD
+  section 設計
+  要件定義       :a1, 2026-01-01, 7d
+  基本設計       :a2, after a1, 10d
+  section 開発
+  実装           :b1, after a2, 20d
+  テスト         :b2, after b1, 10d`,
+  "円グラフ": `pie title 利用シェア
+  "Chrome" : 64
+  "Safari" : 19
+  "Edge" : 8
+  "その他" : 9`,
+  "マインドマップ": `mindmap
+  root((企画))
+    リサーチ
+      市場調査
+      競合分析
+    設計
+      UI
+      UX
+    開発
+      フロント
+      バックエンド`,
+  "ユーザージャーニー": `journey
+  title 購入までの体験
+  section 発見
+    広告を見る: 3: ユーザー
+    サイト訪問: 4: ユーザー
+  section 検討
+    比較する: 3: ユーザー
+    レビュー確認: 5: ユーザー
+  section 購入
+    カート追加: 5: ユーザー
+    決済完了: 4: ユーザー`,
+  "Gitグラフ": `gitGraph
+  commit
+  branch develop
+  commit
+  commit
+  checkout main
+  merge develop
+  commit`
+};
+
+const editor = document.getElementById('editor');
+const gutter = document.getElementById('gutter');
+const stage = document.getElementById('stage');
+const viewport = document.getElementById('viewport');
+const empty = document.getElementById('empty');
+const dot = document.getElementById('dot');
+const statusText = document.getElementById('statusText');
+const errbar = document.getElementById('errbar');
+const errText = document.getElementById('errText');
+const tplSel = document.getElementById('tpl');
+const themeSel = document.getElementById('theme');
+const zoomVal = document.getElementById('zoomVal');
+const toast = document.getElementById('toast');
+
+let renderId = 0;
+let currentSvg = null;
+
+// populate templates
+const ph=document.createElement('option'); ph.value=''; ph.textContent='（テンプレートを選択）'; tplSel.appendChild(ph);
+Object.keys(templates).forEach(k=>{
+  const o=document.createElement('option'); o.value=k; o.textContent=k; tplSel.appendChild(o);
+});
+
+mermaid.initialize({startOnLoad:false, theme:'default', securityLevel:'loose',
+  flowchart:{htmlLabels:true,curve:'basis'}, fontFamily:'Inter, system-ui, sans-serif'});
+
+// ---- gutter ----
+function updateGutter(){
+  const n = editor.value.split('\n').length;
+  let s=''; for(let i=1;i<=n;i++) s+=i+'\n';
+  gutter.textContent = s.trimEnd() || '1';
+  gutter.scrollTop = editor.scrollTop;
+}
+editor.addEventListener('scroll',()=>gutter.scrollTop=editor.scrollTop);
+
+// tab inserts two spaces
+editor.addEventListener('keydown',e=>{
+  if(e.key==='Tab'){
+    e.preventDefault();
+    const s=editor.selectionStart, en=editor.selectionEnd;
+    editor.value=editor.value.slice(0,s)+'  '+editor.value.slice(en);
+    editor.selectionStart=editor.selectionEnd=s+2;
+    onInput();
+  }
+});
+
+function setStatus(state){
+  if(state==='ok'){dot.className='dot pulse';statusText.textContent='描画完了';
+    setTimeout(()=>dot.className='dot',500);}
+  else if(state==='error'){dot.className='dot err';statusText.textContent='構文エラー';}
+}
+function showError(msg){
+  errText.textContent = msg.split('\n').slice(0,4).join('\n');
+  errbar.classList.add('show');
+}
+function hideError(){errbar.classList.remove('show');}
+
+async function render(){
+  const code = editor.value.trim();
+  if(!code){stage.innerHTML='';empty.style.display='grid';hideError();statusText.textContent='準備完了';return;}
+  empty.style.display='none';
+  const id = 'mmd'+(renderId++);
+  try{
+    const {svg} = await mermaid.render(id, code);
+    stage.innerHTML = svg;
+    currentSvg = stage.querySelector('svg');
+    setStatus('ok');
+    hideError();
+  }catch(err){
+    // remove any stray node mermaid may have appended
+    document.getElementById(id)?.remove();
+    document.getElementById('d'+id)?.remove();
+    setStatus('error');
+    showError((err && err.message) ? err.message : String(err));
+  }
+}
+
+let debounce;
+function onInput(){
+  updateGutter();
+  clearTimeout(debounce);
+  debounce=setTimeout(render,250);
+}
+editor.addEventListener('input',onInput);
+
+// ---- templates & theme ----
+function loadTemplate(name){
+  editor.value = templates[name];
+  updateGutter();
+  resetView();
+  render().then(fit);
+}
+tplSel.addEventListener('change',e=>{ if(e.target.value) loadTemplate(e.target.value); });
+themeSel.addEventListener('change',e=>{
+  mermaid.initialize({startOnLoad:false, theme:e.target.value, securityLevel:'loose',
+    flowchart:{htmlLabels:true,curve:'basis'}, fontFamily:'Inter, system-ui, sans-serif'});
+  render();
+});
+
+// ---- pan & zoom ----
+let scale=1, tx=0, ty=0;
+function applyTransform(){
+  stage.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`;
+  zoomVal.textContent=Math.round(scale*100)+'%';
+}
+function resetView(){scale=1;tx=0;ty=0;applyTransform();}
+function fit(){
+  if(!currentSvg) return;
+  const r=currentSvg.getBoundingClientRect();
+  const vw=viewport.clientWidth, vh=viewport.clientHeight;
+  const w=currentSvg.viewBox.baseVal.width||r.width;
+  const h=currentSvg.viewBox.baseVal.height||r.height;
+  if(!w||!h) return;
+  scale=Math.min(vw/w, vh/h)*0.9;
+  scale=Math.min(scale,2);
+  tx=(vw-w*scale)/2; ty=(vh-h*scale)/2;
+  applyTransform();
+}
+document.getElementById('fitBtn').addEventListener('click',fit);
+document.getElementById('zoomIn').addEventListener('click',()=>{scale=Math.min(scale*1.2,8);applyTransform();});
+document.getElementById('zoomOut').addEventListener('click',()=>{scale=Math.max(scale/1.2,0.1);applyTransform();});
+
+viewport.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const rect=viewport.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const factor=e.deltaY<0?1.12:1/1.12;
+  const ns=Math.min(Math.max(scale*factor,0.1),8);
+  tx=mx-(mx-tx)*(ns/scale); ty=my-(my-ty)*(ns/scale);
+  scale=ns; applyTransform();
+},{passive:false});
+
+let dragging=false,sx,sy;
+viewport.addEventListener('pointerdown',e=>{dragging=true;sx=e.clientX-tx;sy=e.clientY-ty;
+  viewport.classList.add('grabbing');viewport.setPointerCapture(e.pointerId);});
+viewport.addEventListener('pointermove',e=>{if(!dragging)return;tx=e.clientX-sx;ty=e.clientY-sy;applyTransform();});
+viewport.addEventListener('pointerup',()=>{dragging=false;viewport.classList.remove('grabbing');});
+
+// ---- export ----
+function showToast(msg){toast.textContent=msg;toast.classList.add('show');
+  setTimeout(()=>toast.classList.remove('show'),1800);}
+
+function serializedSvg(){
+  if(!currentSvg) return null;
+  const clone=currentSvg.cloneNode(true);
+  clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  clone.setAttribute('xmlns:xlink','http://www.w3.org/1999/xlink');
+  const w=currentSvg.viewBox.baseVal.width||currentSvg.getBoundingClientRect().width;
+  const h=currentSvg.viewBox.baseVal.height||currentSvg.getBoundingClientRect().height;
+  clone.setAttribute('width',w); clone.setAttribute('height',h);
+  return {str:new XMLSerializer().serializeToString(clone), w, h};
+}
+function download(blob,name){
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
+  a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function stamp(){return new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');}
+
+document.getElementById('svgBtn').addEventListener('click',()=>{
+  const s=serializedSvg(); if(!s){showToast('まず図を描画してください');return;}
+  download(new Blob([s.str],{type:'image/svg+xml'}),`diagram-${stamp()}.svg`);
+  showToast('SVGを保存しました');
+});
+document.getElementById('copyBtn').addEventListener('click',async()=>{
+  const s=serializedSvg(); if(!s){showToast('まず図を描画してください');return;}
+  try{await navigator.clipboard.writeText(s.str);showToast('SVGコードをコピーしました');}
+  catch{showToast('コピーに失敗しました');}
+});
+document.getElementById('pngBtn').addEventListener('click',()=>{
+  const s=serializedSvg(); if(!s){showToast('まず図を描画してください');return;}
+  const scaleF=2; // 高解像度
+  const bgWhite=document.getElementById('bgWhite').checked;
+  const img=new Image();
+  img.onload=()=>{
+    const c=document.createElement('canvas');
+    c.width=s.w*scaleF; c.height=s.h*scaleF;
+    const ctx=c.getContext('2d');
+    if(bgWhite){ctx.fillStyle='#ffffff';ctx.fillRect(0,0,c.width,c.height);}
+    ctx.setTransform(scaleF,0,0,scaleF,0,0);
+    ctx.drawImage(img,0,0);
+    c.toBlob(b=>{download(b,`diagram-${stamp()}.png`);showToast('PNGを保存しました');},'image/png');
+  };
+  img.onerror=()=>showToast('PNG変換に失敗しました（SVGをお試しください）');
+  img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(s.str);
+});
+
+// ---- init ----
+tplSel.value='';
+updateGutter();
+render();
+window.addEventListener('resize',()=>{});
+</script>
+</body>
+</html>
