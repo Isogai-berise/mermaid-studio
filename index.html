@@ -198,10 +198,6 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13l2 2 4-4"/></svg>
           md読込
         </button>
-        <button class="txtbtn" id="publishBtn" title="IDを付けて公開用ファイルに書き出す（みんなが閲覧できるURLになります）">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
-          ID公開
-        </button>
         <label>テンプレート</label>
         <select id="tpl"></select>
         <label>保存済み</label>
@@ -768,59 +764,8 @@ mdBtn.addEventListener('click',()=>{
 document.getElementById('mdPrev').addEventListener('click',()=>showMdBlock(mdIndex-1));
 document.getElementById('mdNext').addEventListener('click',()=>showMdBlock(mdIndex+1));
 
-// ---- ID registry (shared via the repo's diagrams/ folder) ----
-// 図を diagrams/<id>.mmd として公開し、?id=<id> で誰でも読めるようにする仕組み。
-function sanitizeId(id){ return (id||'').trim().replace(/[^A-Za-z0-9_-]/g,''); }
-function suggestId(){
-  const base=(editor.value.trim().split('\n')[0]||'diagram').toLowerCase()
-    .replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,28);
-  return base || ('d'+Date.now().toString(36));
-}
-async function loadFromId(id){
-  id=sanitizeId(id);
-  if(!id){ showToast('IDが不正です'); return; }
-  const url=new URL('diagrams/'+id+'.mmd', location.href).toString();
-  showToast('ID「'+id+'」を読み込み中…');
-  try{
-    const res=await fetch(url,{cache:'no-cache'});
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const text=await res.text();
-    if(!text.trim()) throw new Error('ファイルが空です');
-    editor.value=text;
-    tplSel.value=''; savedSel.value='';
-    updateGutter(); resetView(); render().then(fit);
-    showToast('ID「'+id+'」を読み込みました');
-  }catch(e){
-    setStatus('error');
-    showError('ID「'+id+'」を読み込めませんでした：'+(e.message||e)+
-      '\n（diagrams/'+id+'.mmd がリポジトリに存在し、公開（コミット）されているか確認してください）');
-    showToast('読み込みに失敗しました');
-  }
-}
-function publishId(){
-  if(!editor.value.trim()){ showToast('まず図を入力してください'); return; }
-  let id;
-  try{ id=window.prompt('公開する ID を入力（英数字・- _ のみ／この ID が URL になります）\n例: login-flow', suggestId()); }
-  catch(e){ id=suggestId(); }
-  if(id===null) return;
-  id=sanitizeId(id);
-  if(!id){ showToast('IDが不正です'); return; }
-  if(USE_FIREBASE){ publishToCloud(id); return; }
-  // （Firebase未使用時）diagrams/ に置くためのファイルを書き出す
-  download(new Blob([editor.value],{type:'text/plain;charset=utf-8'}), id+'.mmd');
-  // 公開URL（読み取り専用）をコピー
-  const url=location.origin+location.pathname+'?id='+id+'&view=1';
-  copyLink(url, `「${id}.mmd」を保存し、公開URLをコピーしました（diagrams/ に置いてください）`);
-}
-document.getElementById('publishBtn').addEventListener('click',publishId);
-
 // ====================================================================
-// Firebase 連携（特定の人だけ閲覧可にする・任意）
-// 下の firebaseConfig を実際の値に置き換えると有効化されます。
-//  - ?id=<id> はクラウド(Firestore)から読み込み、閲覧にはログインが必要
-//  - 「ID公開」はクラウドに保存（書き込みは owner だけ／ルールで制御）
-//  - apiKey は公開して問題ありません（安全性は Firestore のルールで担保）
-// 置き換えない限り Firebase は一切読み込まれず、従来どおり動きます。
+// Firebase 連携
 // ====================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyAtGElsSEzzZWZwHuRp9x1J470e9upNb1A",
@@ -833,7 +778,7 @@ const firebaseConfig = {
 const USE_FIREBASE = !/^YOUR_/.test(firebaseConfig.apiKey) && !/^YOUR_/.test(firebaseConfig.projectId);
 
 const authBtn=document.getElementById('authBtn');
-let fb=null, fbUser=null, pendingId=null;
+let fb=null, fbUser=null;
 
 function updateAuthUI(){
   if(!USE_FIREBASE){ authBtn.style.display='none'; return; }
@@ -866,7 +811,6 @@ async function initFirebase(){
     authMod.onAuthStateChanged(auth, u=>{
       fbUser=u; updateAuthUI();
       refreshSaved('');
-      if(u && pendingId){ const pid=pendingId; pendingId=null; loadFromCloud(pid); }
     });
   }catch(e){ console.error(e); showToast('Firebaseの初期化に失敗しました'); }
 }
@@ -878,49 +822,14 @@ async function fbSignIn(){
 async function fbSignOut(){ if(fb){ await fb.authMod.signOut(fb.auth); showToast('ログアウトしました'); } }
 authBtn.addEventListener('click',()=> fbUser ? fbSignOut() : fbSignIn());
 
-async function loadFromCloud(id){
-  id=sanitizeId(id);
-  if(!id){ showToast('IDが不正です'); return; }
-  if(!fb){ pendingId=id; return; }                 // 初期化待ち
-  if(!fbUser){ pendingId=id; showToast('閲覧にはログインが必要です'); return; }
-  try{
-    const snap=await fb.fsMod.getDoc(fb.fsMod.doc(fb.db,'diagrams',id));
-    if(!snap.exists()){ setStatus('error'); showError('ID「'+id+'」は存在しません'); showToast('見つかりません'); return; }
-    editor.value=(snap.data().code)||'';
-    tplSel.value=''; savedSel.value='';
-    updateGutter(); resetView(); render().then(fit);
-    showToast('ID「'+id+'」を読み込みました');
-  }catch(e){
-    setStatus('error');
-    showError('読み込めませんでした：'+(e.code||e.message)+'\n（閲覧権限がない可能性があります）');
-    showToast('権限がないか、読み込みに失敗しました');
-  }
-}
-async function publishToCloud(id){
-  if(!fb){ showToast('Firebaseが初期化されていません'); return; }
-  if(!fbUser){ showToast('公開にはログインが必要です'); fbSignIn(); return; }
-  try{
-    await fb.fsMod.setDoc(fb.fsMod.doc(fb.db,'diagrams',id),
-      { code: editor.value, email: fbUser.email, updatedAt: fb.fsMod.serverTimestamp() });
-    const url=location.origin+location.pathname+'?id='+id+'&view=1';
-    copyLink(url, 'クラウドに公開し、閲覧URLをコピーしました');
-  }catch(e){ showToast('公開に失敗：'+(e.code||e.message)+'（owner権限が必要です）'); }
-}
-
 // ---- init ----
 refreshSaved('');
 initFirebase();
 // 閲覧専用リンクならエディタを隠して図だけ表示
 if(isViewOnly()) applyViewOnly(true);
 
-const idParam=getParam('id');
 const mdParam=getParam('md');
-if(idParam){
-  // ?id=<id> 最優先。Firebase設定時はクラウド（要ログイン）、未設定時は diagrams/<id>.mmd
-  updateGutter();
-  if(USE_FIREBASE) loadFromCloud(idParam);
-  else loadFromId(idParam);
-}else if(mdParam){
+if(mdParam){
   // ?md=<URL>：mdからMermaidを抽出して表示
   updateGutter();
   loadFromMd(mdParam);
