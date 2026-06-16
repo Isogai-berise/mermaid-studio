@@ -1218,7 +1218,7 @@ async function loadShared(uid, id){
   try{
     const {doc,getDoc}=fb.fsMod;
     const snap=await getDoc(doc(fb.db,'users',uid,'diagrams',id));
-    if(!snap.exists()){setStatus('error');showError('プロジェクトが見つかりません');showToast('見つかりません');return;}
+    if(!snap.exists()){ showSharedError('プロジェクトが見つかりません','not-found'); return; }
     const sd=snap.data();
     editor.value=sd.code||'';
     updateGutter(); resetView(); render().then(fit);
@@ -1226,10 +1226,23 @@ async function loadShared(uid, id){
     setProject(label, {id, type:'shared', ownerUid:uid, folder:sd.folder||''});
     showToast('読み込みました');
   }catch(e){
-    setStatus('error');
-    showError('読み込めませんでした：'+(e.code||e.message));
-    showToast('読み込みに失敗しました');
+    const msg=e.code==='permission-denied'
+      ? 'このプロジェクトを閲覧する権限がありません'
+      : '読み込みに失敗しました：'+(e.code||e.message);
+    showSharedError(msg, e.code||'error');
+    console.error('loadShared:',e);
   }
+}
+function showSharedError(msg, code){
+  stage.innerHTML=''; empty.style.display='grid';
+  empty.innerHTML=`
+    <div style="text-align:center;line-height:1.9">
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--err)" stroke-width="1.5" width="40" height="40" style="margin-bottom:12px">
+        <circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/>
+      </svg>
+      <p style="font-size:14px;font-weight:600;color:var(--ink);margin:0 0 6px">${msg}</p>
+      <p style="font-size:11px;color:#4a505c;font-family:var(--mono);margin:0">${code}</p>
+    </div>`;
 }
 function showSharedLoginPrompt(){
   stage.innerHTML='';
