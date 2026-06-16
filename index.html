@@ -207,14 +207,6 @@
         <button class="headbtn" id="delSaved" title="選択中の保存を削除">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
         </button>
-        <label style="margin-left:auto">テーマ</label>
-        <select id="theme">
-          <option value="default">Default</option>
-          <option value="neutral">Neutral</option>
-          <option value="dark">Dark</option>
-          <option value="forest">Forest</option>
-          <option value="base">Base</option>
-        </select>
       </div>
       <div class="editor-wrap">
         <div class="gutter" id="gutter">1</div>
@@ -357,7 +349,6 @@ const statusText = document.getElementById('statusText');
 const errbar = document.getElementById('errbar');
 const errText = document.getElementById('errText');
 const tplSel = document.getElementById('tpl');
-const themeSel = document.getElementById('theme');
 const zoomVal = document.getElementById('zoomVal');
 const toast = document.getElementById('toast');
 
@@ -438,7 +429,7 @@ function onInput(){
 }
 editor.addEventListener('input',onInput);
 
-// ---- templates & theme ----
+// ---- templates ----
 function loadTemplate(name){
   editor.value = templates[name];
   updateGutter();
@@ -446,12 +437,6 @@ function loadTemplate(name){
   render().then(fit);
 }
 tplSel.addEventListener('change',e=>{ if(e.target.value) loadTemplate(e.target.value); });
-function applyTheme(theme){
-  themeSel.value=theme;
-  mermaid.initialize({startOnLoad:false, theme:theme, securityLevel:'loose',
-    flowchart:{htmlLabels:true,curve:'basis'}, fontFamily:'Inter, system-ui, sans-serif'});
-}
-themeSel.addEventListener('change',e=>{ applyTheme(e.target.value); render(); });
 
 // ---- pan & zoom ----
 let scale=1, tx=0, ty=0, baseW=0, baseH=0;
@@ -571,7 +556,6 @@ function getInitialCode(){
   }catch(e){ console.warn('URLの初期値を読み取れませんでした',e); }
   return '';
 }
-const VALID_THEMES=['default','neutral','dark','forest','base'];
 // generic param reader (looks in both query string and hash)
 function getParam(name){
   try{
@@ -590,7 +574,6 @@ function buildShareLink(opts){
   opts=opts||{};
   const code=editor.value.trim();
   let url=location.origin+location.pathname+'?c='+encodeCode(code);
-  if(themeSel.value && themeSel.value!=='default') url+='&t='+encodeURIComponent(themeSel.value);
   if(opts.view) url+='&view=1';
   return url;
 }
@@ -673,7 +656,7 @@ function saveCurrent(){
   const {folder,name}=parsePath(path);
   const items=loadAll();
   const id='d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-  items.push({id,name,folder,code:editor.value,theme:themeSel.value,ts:Date.now()});
+  items.push({id,name,folder,code:editor.value,ts:Date.now()});
   if(saveAll(items)){refreshSaved(id);showToast('保存しました：'+(folder?folder+' / ':'')+name);}
   else showToast('保存に失敗しました');
 }
@@ -681,7 +664,6 @@ function loadSaved(id){
   const it=loadAll().find(x=>x.id===id);
   if(!it){showToast('保存が見つかりませんでした');return;}
   editor.value=it.code;
-  if(it.theme) applyTheme(it.theme);
   tplSel.value='';
   updateGutter();
   resetView();
@@ -893,9 +875,6 @@ async function publishToCloud(id){
 // ---- init ----
 refreshSaved('');
 initFirebase();
-// テーマがURLで指定されていれば復元（共有リンクの見た目を再現）
-const tParam=getParam('t');
-if(tParam && VALID_THEMES.includes(tParam)) applyTheme(tParam);
 // 閲覧専用リンクならエディタを隠して図だけ表示
 if(isViewOnly()) applyViewOnly(true);
 
