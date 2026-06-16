@@ -50,6 +50,9 @@
   .btn.primary:hover{background:#ff7d60}
   .btn svg{width:14px;height:14px}
   .auth-avatar{width:20px;height:20px;border-radius:50%;object-fit:cover;flex-shrink:0;border:1.5px solid rgba(255,255,255,.2)}
+  .project-label{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);
+    font-family:var(--mono);padding-left:14px;border-left:1px solid var(--border);max-width:220px;
+    overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 
   /* ---- workspace split ---- */
   .work{flex:1;display:flex;min-height:0}
@@ -156,6 +159,10 @@
     </div>
     <span class="vo-badge" id="voBadge">閲覧専用</span>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">準備完了</span></div>
+    <div class="project-label" id="projectLabel" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+      <span id="projectName"></span>
+    </div>
     <div class="spacer"></div>
     <div class="actions">
       <button class="btn" id="authBtn" style="display:none" title="ログイン">
@@ -354,6 +361,13 @@ const errText = document.getElementById('errText');
 const tplSel = document.getElementById('tpl');
 const zoomVal = document.getElementById('zoomVal');
 const toast = document.getElementById('toast');
+const projectLabel = document.getElementById('projectLabel');
+const projectName = document.getElementById('projectName');
+
+function setProject(name){
+  if(name){ projectName.textContent=name; projectLabel.style.display='flex'; }
+  else{ projectLabel.style.display='none'; projectName.textContent=''; }
+}
 
 let renderId = 0;
 let currentSvg = null;
@@ -438,6 +452,7 @@ function loadTemplate(name){
   updateGutter();
   resetView();
   render().then(fit);
+  setProject(name);
 }
 tplSel.addEventListener('change',e=>{ if(e.target.value) loadTemplate(e.target.value); });
 
@@ -678,9 +693,11 @@ async function loadSaved(id){
     const {doc,getDoc}=fb.fsMod;
     const snap=await getDoc(doc(fb.db,'users',fbUser.uid,'diagrams',id));
     if(!snap.exists()){showToast('保存が見つかりませんでした');return;}
-    editor.value=snap.data().code||'';
+    const it=snap.data();
+    editor.value=it.code||'';
     tplSel.value='';
     updateGutter(); resetView(); render().then(fit);
+    setProject((it.folder?it.folder+' / ':'')+it.name);
   }catch(e){
     showToast('読み込みに失敗：'+(e.code||e.message));
     console.error('loadSaved:',e);
@@ -712,6 +729,7 @@ document.getElementById('newBtn').addEventListener('click',()=>{
   updateGutter(); resetView();
   stage.innerHTML=''; empty.style.display='grid';
   hideError(); statusText.textContent='準備完了';
+  setProject(null);
   showToast('新規作成しました');
 });
 document.getElementById('saveBtn').addEventListener('click',saveCurrent);
@@ -726,7 +744,7 @@ const mdBtn=document.getElementById('mdBtn');
 const mdFile=document.getElementById('mdFile');
 const mdNav=document.getElementById('mdNav');
 const mdLabel=document.getElementById('mdLabel');
-let mdBlocks=[], mdIndex=0;
+let mdBlocks=[], mdIndex=0, mdFileName='';
 
 function extractMermaid(md){
   const blocks=[]; const re=/```[ \t]*mermaid[^\n]*\n([\s\S]*?)```/gi; let m;
@@ -744,6 +762,7 @@ function showMdBlock(i){
   tplSel.value=''; savedSel.value='';
   updateGutter(); resetView(); render().then(fit);
   updateMdNav();
+  setProject(mdBlocks.length>1 ? `${mdFileName}  (${mdIndex+1}/${mdBlocks.length})` : mdFileName);
 }
 mdBtn.addEventListener('click',()=>mdFile.click());
 mdFile.addEventListener('change',()=>{
@@ -752,7 +771,7 @@ mdFile.addEventListener('change',()=>{
   reader.onload=ev=>{
     const blocks=extractMermaid(ev.target.result);
     if(!blocks.length){ showToast('mdの中にMermaid記法が見つかりませんでした'); return; }
-    mdBlocks=blocks; showMdBlock(0);
+    mdFileName=file.name; mdBlocks=blocks; showMdBlock(0);
     showToast(`「${file.name}」からMermaid図を${blocks.length}件読み込みました`);
   };
   reader.onerror=()=>showToast('ファイルの読み込みに失敗しました');
@@ -786,6 +805,7 @@ async function loadShared(id){
     if(!snap.exists()){setStatus('error');showError('共有リンクが見つかりません');showToast('見つかりません');return;}
     editor.value=snap.data().code||'';
     updateGutter(); resetView(); render().then(fit);
+    setProject('共有リンク');
     showToast('共有リンクを読み込みました');
   }catch(e){
     setStatus('error');
