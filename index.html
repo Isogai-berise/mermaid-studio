@@ -841,11 +841,6 @@ document.getElementById('linkBtn').addEventListener('click',async()=>{
   if(!currentProjectId||currentProjectType!=='saved'){
     showToast('先にプロジェクトを保存してください'); return;
   }
-  try{
-    // isPublic: true を付与して誰でも閲覧できるようにする
-    const {doc,updateDoc}=fb.fsMod;
-    await updateDoc(doc(fb.db,'users',fbUser.uid,'diagrams',currentProjectId),{isPublic:true});
-  }catch(e){ console.error('linkBtn isPublic:',e); }
   const url=location.origin+location.pathname
     +'?uid='+encodeURIComponent(fbUser.uid)
     +'&id='+encodeURIComponent(currentProjectId)
