@@ -160,6 +160,38 @@
   body.view-only #linkBtn{display:none}
   body.view-only #editToggle{display:inline-flex}
   body.view-only .vo-badge{display:inline-flex}
+  body.view-only #projectDel{display:none!important}
+
+  /* ---- save modal ---- */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:grid;
+    place-items:center;z-index:500;opacity:0;pointer-events:none;transition:.18s;backdrop-filter:blur(3px)}
+  .modal-backdrop.open{opacity:1;pointer-events:auto}
+  .modal{background:#1a1d24;border:1px solid var(--border);border-radius:14px;
+    padding:24px 26px 20px;width:380px;max-width:calc(100vw - 32px);
+    box-shadow:0 24px 64px rgba(0,0,0,.55);
+    transform:translateY(12px) scale(.98);transition:.18s}
+  .modal-backdrop.open .modal{transform:translateY(0) scale(1)}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+  .modal-title{font-size:14px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:8px}
+  .modal-title svg{color:var(--accent)}
+  .modal-close{display:grid;place-items:center;width:26px;height:26px;border-radius:6px;
+    color:var(--muted);transition:.12s}
+  .modal-close:hover{color:var(--ink);background:#ffffff0d}
+  .mfield{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+  .mfield-label{font-size:10.5px;font-weight:500;color:var(--muted);text-transform:uppercase;
+    letter-spacing:.1em;font-family:var(--mono);display:flex;align-items:center;gap:5px}
+  .mfield-label .opt{font-size:10px;color:#4a505c;text-transform:none;letter-spacing:0;
+    font-weight:400;font-family:var(--sans)}
+  .mfield input{background:#0e1014;border:1px solid var(--border);border-radius:8px;
+    padding:9px 12px;font-size:13px;color:var(--ink);font-family:var(--sans);
+    transition:.15s;width:100%}
+  .mfield input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-dim)}
+  .mfield input::placeholder{color:#3a3f4c}
+  .mfield-hint{font-size:11px;color:#4a505c;font-family:var(--mono);margin-top:-8px}
+  .modal-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;
+    padding-top:16px;border-top:1px solid var(--border)}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
+  .mfield input.shake{animation:shake .35s ease;border-color:var(--err)}
 
   @media (max-width:980px){ .actions .label{display:none} }
   @media (max-width:760px){
@@ -301,6 +333,33 @@
         <div class="empty" id="empty">図がここに描画されます</div>
       </div>
     </section>
+  </div>
+</div>
+<!-- save modal -->
+<div class="modal-backdrop" id="saveModal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        プロジェクトを保存
+      </span>
+      <button class="modal-close" id="saveModalClose" aria-label="閉じる">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14" height="14"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="mfield">
+      <label class="mfield-label">プロジェクト名</label>
+      <input type="text" id="saveModalName" placeholder="例: ログインフロー" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="mfield">
+      <label class="mfield-label">フォルダ <span class="opt">（任意）</span></label>
+      <input type="text" id="saveModalFolder" placeholder="例: プロジェクトA / 設計" autocomplete="off" spellcheck="false">
+      <span class="mfield-hint">「/」で区切ると階層フォルダになります</span>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="saveModalCancel">キャンセル</button>
+      <button class="btn primary" id="saveModalOk">保存する</button>
+    </div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -803,21 +862,57 @@ function refreshSaved(selectId){
     });
 }
 
+function openSaveModal(){
+  return new Promise(resolve=>{
+    const backdrop=document.getElementById('saveModal');
+    const nameEl=document.getElementById('saveModalName');
+    const folderEl=document.getElementById('saveModalFolder');
+    const okBtn=document.getElementById('saveModalOk');
+    const cancelBtn=document.getElementById('saveModalCancel');
+    const closeBtn=document.getElementById('saveModalClose');
+    nameEl.value=defaultName(); folderEl.value='';
+    backdrop.classList.add('open');
+    requestAnimationFrame(()=>{ nameEl.focus(); nameEl.select(); });
+    function done(result){
+      backdrop.classList.remove('open');
+      okBtn.removeEventListener('click',onOk);
+      cancelBtn.removeEventListener('click',onCancel);
+      closeBtn.removeEventListener('click',onCancel);
+      backdrop.removeEventListener('click',onBd);
+      nameEl.removeEventListener('keydown',onKey);
+      folderEl.removeEventListener('keydown',onKey);
+      resolve(result);
+    }
+    function onOk(){
+      const n=(nameEl.value||'').trim();
+      if(!n){nameEl.focus();nameEl.classList.add('shake');setTimeout(()=>nameEl.classList.remove('shake'),400);return;}
+      done({name:n, folder:(folderEl.value||'').trim()});
+    }
+    function onCancel(){ done(null); }
+    function onBd(e){ if(e.target===backdrop) onCancel(); }
+    function onKey(e){ if(e.key==='Enter') onOk(); else if(e.key==='Escape') onCancel(); }
+    okBtn.addEventListener('click',onOk);
+    cancelBtn.addEventListener('click',onCancel);
+    closeBtn.addEventListener('click',onCancel);
+    backdrop.addEventListener('click',onBd);
+    nameEl.addEventListener('keydown',onKey);
+    folderEl.addEventListener('keydown',onKey);
+  });
+}
 async function saveCurrent(){
   if(!editor.value.trim()){showToast('まず図を入力してください');return;}
   if(!USE_FIREBASE||!fb){showToast('Firebaseが初期化されていません');return;}
   if(!fbUser){showToast('保存にはログインが必要です');fbSignIn();return;}
-  let path;
-  try{ path=window.prompt('保存先のパスを入力（「/」で階層を区切れます）\n例: プロジェクトA/設計/ログイン図', defaultName()); }
-  catch(e){ path=defaultName(); }
-  if(path===null) return;
-  const {folder,name}=parsePath(path);
+  const result=await openSaveModal();
+  if(!result) return;
+  const {name,folder}=result;
   try{
     const {collection,addDoc,serverTimestamp}=fb.fsMod;
     const ref=await addDoc(collection(fb.db,'users',fbUser.uid,'diagrams'),
       {name,folder,code:editor.value,ts:serverTimestamp()});
     refreshSaved(ref.id);
-    showToast('保存しました：'+(folder?folder+' / ':'')+name);
+    setProject((folder?folder+' / ':'')+name, {id:ref.id, type:'saved', ownerUid:fbUser.uid});
+    showToast('保存しました');
   }catch(e){
     showToast('保存に失敗しました：'+(e.code||e.message));
     console.error('saveCurrent:',e);
