@@ -1259,8 +1259,9 @@ function showSharedLoginPrompt(){
       </svg>
       <p style="font-size:14px;font-weight:600;color:var(--ink);margin:0 0 6px">ログインが必要です</p>
       <p style="font-size:12px;color:var(--muted);margin:0 0 20px">閲覧には <code style="background:#ffffff0d;padding:1px 5px;border-radius:4px">@${ALLOWED_DOMAIN}</code> のGoogleアカウントが必要です</p>
-      <button class="btn primary" onclick="fbSignIn()" style="font-size:13px;padding:9px 20px">Googleでログイン</button>
+      <button class="btn primary" id="sharedLoginBtn" style="font-size:13px;padding:9px 20px">Googleでログイン</button>
     </div>`;
+  document.getElementById('sharedLoginBtn').addEventListener('click', fbSignIn);
 }
 
 function updateAuthUI(){
@@ -1306,7 +1307,7 @@ async function initFirebase(){
   }catch(e){ console.error(e); showToast('Firebaseの初期化に失敗しました'); }
 }
 async function fbSignIn(){
-  if(!fb) return;
+  if(!fb){ showToast('Firebaseを初期化中です。しばらく待ってください'); return; }
   try{ await fb.authMod.signInWithPopup(fb.auth, fb.provider); }
   catch(e){ showToast('ログインに失敗：'+(e.code||e.message)); }
 }
