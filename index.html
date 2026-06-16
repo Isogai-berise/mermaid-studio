@@ -115,6 +115,18 @@
     box-shadow:0 8px 30px rgba(0,0,0,.3);opacity:0;transition:.25s;pointer-events:none;z-index:50}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
+  /* view-only (read-only) mode */
+  .vo-badge{display:none;align-items:center;font-size:10.5px;font-family:var(--mono);
+    color:var(--accent);border:1px solid var(--accent);border-radius:999px;
+    padding:3px 9px;text-transform:uppercase;letter-spacing:.12em}
+  #editToggle{display:none}
+  body.view-only .editor-pane{display:none}
+  body.view-only #saveBtn,
+  body.view-only #linkBtn{display:none}
+  body.view-only #editToggle{display:inline-flex}
+  body.view-only .vo-badge{display:inline-flex}
+
+  @media (max-width:980px){ .actions .label{display:none} }
   @media (max-width:760px){
     .work{flex-direction:column}
     .editor-pane{width:100%;height:46%;min-width:0;border-right:none;border-bottom:1px solid var(--border)}
@@ -136,6 +148,7 @@
       </svg>
       <span class="name">Mermaid<b>Studio</b></span>
     </div>
+    <span class="vo-badge" id="voBadge">閲覧専用</span>
     <div class="status"><span class="dot" id="dot"></span><span id="statusText">準備完了</span></div>
     <div class="spacer"></div>
     <div class="actions">
@@ -143,9 +156,13 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
         <span class="label">保存</span>
       </button>
-      <button class="btn" id="linkBtn" title="この図を開ける共有URLをコピー">
+      <button class="btn" id="linkBtn" title="図だけを表示する読み取り専用URLをコピー">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         <span class="label">リンクをコピー</span>
+      </button>
+      <button class="btn" id="editToggle" title="編集モードに切り替える">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+        <span class="label">編集する</span>
       </button>
       <button class="btn" id="copyBtn" title="SVGコードをコピー">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
@@ -532,18 +549,47 @@ function getInitialCode(){
   }catch(e){ console.warn('URLの初期値を読み取れませんでした',e); }
   return '';
 }
-function buildShareLink(){
-  const code=editor.value.trim();
-  return location.origin+location.pathname+'?c='+encodeCode(code);
+const VALID_THEMES=['default','neutral','dark','forest','base'];
+// generic param reader (looks in both query string and hash)
+function getParam(name){
+  try{
+    const q=new URLSearchParams(location.search);
+    if(q.has(name)) return q.get(name);
+    const h=new URLSearchParams(location.hash.replace(/^#/,''));
+    if(h.has(name)) return h.get(name);
+  }catch(e){}
+  return null;
 }
-document.getElementById('linkBtn').addEventListener('click',async()=>{
+function isViewOnly(){
+  const v=getParam('view');
+  return v==='1'||v==='true'||v==='';   // ?view / ?view=1 / ?view=true
+}
+function buildShareLink(opts){
+  opts=opts||{};
+  const code=editor.value.trim();
+  let url=location.origin+location.pathname+'?c='+encodeCode(code);
+  if(themeSel.value && themeSel.value!=='default') url+='&t='+encodeURIComponent(themeSel.value);
+  if(opts.view) url+='&view=1';
+  return url;
+}
+async function copyLink(url,msg){
+  try{await navigator.clipboard.writeText(url);showToast(msg);}
+  catch{ window.prompt('このURLをコピーしてください',url); }
+}
+document.getElementById('linkBtn').addEventListener('click',()=>{
   if(!editor.value.trim()){showToast('まず図を入力してください');return;}
-  const url=buildShareLink();
-  try{await navigator.clipboard.writeText(url);showToast('共有リンクをコピーしました');}
-  catch{
-    // クリップボードが使えない環境向けのフォールバック
-    window.prompt('このURLをコピーしてください',url);
-  }
+  copyLink(buildShareLink({view:true}),'読み取り専用リンクをコピーしました');
+});
+// switch from view-only to editable (for the viewer who wants to tweak)
+function applyViewOnly(on){
+  document.body.classList.toggle('view-only', !!on);
+  setTimeout(()=>{ if(currentSvg) fit(); }, 30);
+}
+document.getElementById('editToggle').addEventListener('click',()=>{
+  applyViewOnly(false);
+  try{ const u=new URL(location.href); u.searchParams.delete('view');
+    history.replaceState(null,'',u.toString()); }catch(e){}
+  showToast('編集モードに切り替えました');
 });
 
 // ---- save to browser (localStorage) ----
@@ -647,6 +693,11 @@ if(initial){
 }else{
   tplSel.value='';
 }
+// テーマがURLで指定されていれば復元（共有リンクの見た目を再現）
+const tParam=getParam('t');
+if(tParam && VALID_THEMES.includes(tParam)) applyTheme(tParam);
+// 閲覧専用リンクならエディタを隠して図だけ表示
+if(isViewOnly()) applyViewOnly(true);
 updateGutter();
 render().then(()=>{ if(initial) fit(); });
 window.addEventListener('resize',()=>{});
