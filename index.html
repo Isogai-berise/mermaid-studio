@@ -599,88 +599,110 @@ document.getElementById('editToggle').addEventListener('click',()=>{
   showToast('編集モードに切り替えました');
 });
 
-// ---- save to browser (localStorage) ----
-// Works on a real deployment (e.g. GitHub Pages). In sandboxed previews where
-// storage is blocked, every call degrades gracefully instead of throwing.
+// ---- save to Firestore ----
+// ユーザーごとに users/{uid}/diagrams/{docId} に保存する。
+// Firebase 未初期化・未ログイン時はドロップダウンに案内を表示するだけで壊れない。
 const savedSel=document.getElementById('saved');
-const STORE_KEY='mermaidStudio.diagrams.v1';
-const canStore=(()=>{try{const k='__ms_test__';localStorage.setItem(k,'1');localStorage.removeItem(k);return true;}catch(e){return false;}})();
 
-function loadAll(){
-  if(!canStore) return [];
-  try{return JSON.parse(localStorage.getItem(STORE_KEY)||'[]');}catch(e){return [];}
-}
-function saveAll(arr){
-  if(!canStore) return false;
-  try{localStorage.setItem(STORE_KEY,JSON.stringify(arr));return true;}catch(e){return false;}
-}
-function refreshSaved(selectId){
-  const items=loadAll();
-  savedSel.innerHTML='';
-  const ph=document.createElement('option');
-  ph.value=''; ph.textContent=items.length?`（保存した図・${items.length}件）`:'（保存した図）';
-  savedSel.appendChild(ph);
-  // フォルダ（階層）ごとにグループ化して表示
-  const groups={};
-  items.forEach(it=>{const f=it.folder||''; (groups[f]=groups[f]||[]).push(it);});
-  Object.keys(groups).sort((a,b)=>a.localeCompare(b)).forEach(folder=>{
-    const og=document.createElement('optgroup');
-    og.label = folder ? '📁 '+folder.split('/').join(' / ') : '（未分類）';
-    groups[folder].sort((a,b)=>a.name.localeCompare(b.name)).forEach(it=>{
-      const o=document.createElement('option'); o.value=it.id; o.textContent=it.name; og.appendChild(o);
-    });
-    savedSel.appendChild(og);
-  });
-  savedSel.value=selectId||'';
-}
 function defaultName(){
   const first=(editor.value.trim().split('\n')[0]||'図').replace(/\s+/g,' ').slice(0,28);
   return first||'無題の図';
 }
-// パス文字列を {folder, name} に分解。"a/b/図" → folder:"a/b", name:"図"
 function parsePath(path){
   const segs=(path||'').split('/').map(s=>s.trim()).filter(Boolean);
   if(!segs.length) return {folder:'', name:defaultName()};
   const name=segs.pop();
   return {folder:segs.join('/'), name};
 }
-function saveCurrent(){
+
+function refreshSaved(selectId){
+  savedSel.innerHTML='';
+  const ph=document.createElement('option'); ph.value='';
+  if(!USE_FIREBASE||!fb||!fbUser){
+    ph.textContent='（ログインして保存）'; savedSel.appendChild(ph); return;
+  }
+  ph.textContent='（読み込み中…）'; savedSel.appendChild(ph);
+  const {collection,query,orderBy,getDocs}=fb.fsMod;
+  getDocs(query(collection(fb.db,'users',fbUser.uid,'diagrams'),orderBy('ts','desc')))
+    .then(snap=>{
+      const items=snap.docs.map(d=>({id:d.id,...d.data()}));
+      savedSel.innerHTML='';
+      const ph2=document.createElement('option'); ph2.value='';
+      ph2.textContent=items.length?`（保存した図・${items.length}件）`:'（保存した図）';
+      savedSel.appendChild(ph2);
+      const groups={};
+      items.forEach(it=>{const f=it.folder||'';(groups[f]=groups[f]||[]).push(it);});
+      Object.keys(groups).sort((a,b)=>a.localeCompare(b)).forEach(folder=>{
+        const og=document.createElement('optgroup');
+        og.label=folder?'📁 '+folder.split('/').join(' / '):'（未分類）';
+        groups[folder].sort((a,b)=>a.name.localeCompare(b.name)).forEach(it=>{
+          const o=document.createElement('option'); o.value=it.id; o.textContent=it.name; og.appendChild(o);
+        });
+        savedSel.appendChild(og);
+      });
+      savedSel.value=selectId||'';
+    })
+    .catch(e=>{
+      savedSel.innerHTML='';
+      const pe=document.createElement('option'); pe.value=''; pe.textContent='（読み込みエラー）';
+      savedSel.appendChild(pe);
+      console.error('refreshSaved:',e);
+    });
+}
+
+async function saveCurrent(){
   if(!editor.value.trim()){showToast('まず図を入力してください');return;}
-  if(!canStore){showToast('このプレビューでは保存できません（デプロイ先では保存できます）');return;}
-  // 選択中の図と同じフォルダを初期値に入れておく
-  let prefill='';
-  const cur=loadAll().find(x=>x.id===savedSel.value);
-  if(cur && cur.folder) prefill=cur.folder+'/';
+  if(!USE_FIREBASE||!fb){showToast('Firebaseが初期化されていません');return;}
+  if(!fbUser){showToast('保存にはログインが必要です');fbSignIn();return;}
   let path;
-  try{ path=window.prompt('保存先のパスを入力（「/」で階層を区切れます）\n例: プロジェクトA/設計/ログイン図', prefill+defaultName()); }
-  catch(e){ path=prefill+defaultName(); }
-  if(path===null) return;                 // キャンセル
+  try{ path=window.prompt('保存先のパスを入力（「/」で階層を区切れます）\n例: プロジェクトA/設計/ログイン図', defaultName()); }
+  catch(e){ path=defaultName(); }
+  if(path===null) return;
   const {folder,name}=parsePath(path);
-  const items=loadAll();
-  const id='d'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-  items.push({id,name,folder,code:editor.value,ts:Date.now()});
-  if(saveAll(items)){refreshSaved(id);showToast('保存しました：'+(folder?folder+' / ':'')+name);}
-  else showToast('保存に失敗しました');
+  try{
+    const {collection,addDoc,serverTimestamp}=fb.fsMod;
+    const ref=await addDoc(collection(fb.db,'users',fbUser.uid,'diagrams'),
+      {name,folder,code:editor.value,ts:serverTimestamp()});
+    refreshSaved(ref.id);
+    showToast('保存しました：'+(folder?folder+' / ':'')+name);
+  }catch(e){
+    showToast('保存に失敗しました：'+(e.code||e.message));
+    console.error('saveCurrent:',e);
+  }
 }
-function loadSaved(id){
-  const it=loadAll().find(x=>x.id===id);
-  if(!it){showToast('保存が見つかりませんでした');return;}
-  editor.value=it.code;
-  tplSel.value='';
-  updateGutter();
-  resetView();
-  render().then(fit);
+
+async function loadSaved(id){
+  if(!fb||!fbUser){showToast('ログインが必要です');return;}
+  try{
+    const {doc,getDoc}=fb.fsMod;
+    const snap=await getDoc(doc(fb.db,'users',fbUser.uid,'diagrams',id));
+    if(!snap.exists()){showToast('保存が見つかりませんでした');return;}
+    editor.value=snap.data().code||'';
+    tplSel.value='';
+    updateGutter(); resetView(); render().then(fit);
+  }catch(e){
+    showToast('読み込みに失敗：'+(e.code||e.message));
+    console.error('loadSaved:',e);
+  }
 }
-function deleteSaved(id){
-  const items=loadAll();
-  const it=items.find(x=>x.id===id);
-  if(!it) return;
-  const full=(it.folder?it.folder+' / ':'')+it.name;
-  try{if(!window.confirm(`「${full}」を削除しますか？`)) return;}catch(e){}
-  saveAll(items.filter(x=>x.id!==id));
-  refreshSaved('');
-  showToast('削除しました');
+
+async function deleteSaved(id){
+  if(!fb||!fbUser) return;
+  try{
+    const {doc,getDoc,deleteDoc}=fb.fsMod;
+    const snap=await getDoc(doc(fb.db,'users',fbUser.uid,'diagrams',id));
+    const it=snap.exists()?snap.data():{name:'この図'};
+    const full=(it.folder?it.folder+' / ':'')+it.name;
+    try{if(!window.confirm(`「${full}」を削除しますか？`)) return;}catch(e){}
+    await deleteDoc(doc(fb.db,'users',fbUser.uid,'diagrams',id));
+    refreshSaved('');
+    showToast('削除しました');
+  }catch(e){
+    showToast('削除に失敗：'+(e.code||e.message));
+    console.error('deleteSaved:',e);
+  }
 }
+
 document.getElementById('saveBtn').addEventListener('click',saveCurrent);
 savedSel.addEventListener('change',e=>{ if(e.target.value) loadSaved(e.target.value); });
 document.getElementById('delSaved').addEventListener('click',()=>{
@@ -843,6 +865,7 @@ async function initFirebase(){
     fb = { auth, db, authMod, fsMod, provider:new authMod.GoogleAuthProvider() };
     authMod.onAuthStateChanged(auth, u=>{
       fbUser=u; updateAuthUI();
+      refreshSaved('');
       if(u && pendingId){ const pid=pendingId; pendingId=null; loadFromCloud(pid); }
     });
   }catch(e){ console.error(e); showToast('Firebaseの初期化に失敗しました'); }
