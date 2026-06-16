@@ -881,14 +881,24 @@ async function updateFolderMeta(folder, delta){
   if(!fb||!fbUser) return;
   explorerCache={};
   const key=folder||'__root__';
-  const {doc,updateDoc,setDoc,increment}=fb.fsMod;
+  const {doc,getDoc,setDoc}=fb.fsMod;
   const ref=doc(fb.db,'users',fbUser.uid,'meta','index');
   try{
-    await updateDoc(ref,{[`folders.${key}`]:increment(delta)});
-  }catch(e){
-    if(e.code==='not-found') await setDoc(ref,{folders:{[key]:Math.max(0,delta)}});
-    else console.error('updateFolderMeta:',e);
-  }
+    const snap=await getDoc(ref);
+    const folders={...((snap.exists()?snap.data().folders:null)||{})};
+    const next=(folders[key]||0)+delta;
+    if(next<=0) delete folders[key]; else folders[key]=next;
+    await setDoc(ref,{folders});
+  }catch(e){ console.error('updateFolderMeta:',e); }
+}
+async function rebuildMetaIndex(){
+  if(!fb||!fbUser) return {};
+  const {collection,getDocs,doc,setDoc}=fb.fsMod;
+  const snap=await getDocs(collection(fb.db,'users',fbUser.uid,'diagrams'));
+  const folders={};
+  snap.docs.forEach(d=>{ const k=d.data().folder||'__root__'; folders[k]=(folders[k]||0)+1; });
+  if(Object.keys(folders).length) await setDoc(doc(fb.db,'users',fbUser.uid,'meta','index'),{folders});
+  return folders;
 }
 
 // ---- file explorer ----
@@ -902,11 +912,22 @@ async function openExplorer(){
   try{
     const {doc,getDoc}=fb.fsMod;
     const snap=await getDoc(doc(fb.db,'users',fbUser.uid,'meta','index'));
-    const folders=snap.exists()?(snap.data().folders||{}):{};
+    let folders=snap.exists()?(snap.data().folders||{}):{};
+    // meta/indexが空 or 未作成なら既存diagrams全件から再構築
+    if(!Object.keys(folders).some(k=>(folders[k]||0)>0)){
+      folders=await rebuildMetaIndex();
+    }
     renderExplorer(body,folders);
   }catch(e){
-    body.innerHTML='<div class="exp-empty">読み込みに失敗しました</div>';
-    console.error('openExplorer:',e);
+    // セキュリティルールでmeta読み込みが拒否された場合もdiagrams直読みで代替
+    console.warn('meta/index read failed, falling back:',e.code,e.message);
+    try{
+      const folders=await rebuildMetaIndex();
+      renderExplorer(body,folders);
+    }catch(e2){
+      body.innerHTML=`<div class="exp-empty">読み込みに失敗しました<br><span style="font-size:11px;color:#4a505c">${e.code||e.message}</span></div>`;
+      console.error('openExplorer fallback failed:',e2);
+    }
   }
 }
 function closeExplorer(){
@@ -960,18 +981,19 @@ async function toggleExpFolder(head,key,filesEl){
   if(explorerCache[key]){ renderExpFiles(filesEl,explorerCache[key],key); return; }
   filesEl.innerHTML='<div class="exp-loading">読み込み中…</div>';
   try{
-    const {collection,query,where,orderBy,getDocs}=fb.fsMod;
+    const {collection,query,where,getDocs}=fb.fsMod;
     const folderVal=key==='__root__'?'':key;
     const snap=await getDocs(query(
       collection(fb.db,'users',fbUser.uid,'diagrams'),
-      where('folder','==',folderVal),
-      orderBy('ts','desc')
+      where('folder','==',folderVal)
     ));
-    const items=snap.docs.map(d=>({id:d.id,...d.data()}));
+    const items=snap.docs
+      .map(d=>({id:d.id,...d.data()}))
+      .sort((a,b)=>(b.ts?.seconds||0)-(a.ts?.seconds||0));
     explorerCache[key]=items;
     renderExpFiles(filesEl,items,key);
   }catch(e){
-    filesEl.innerHTML='<div class="exp-loading">読み込みに失敗しました</div>';
+    filesEl.innerHTML=`<div class="exp-loading">読み込みに失敗しました (${e.code||e.message})</div>`;
     console.error('toggleExpFolder:',e);
   }
 }
