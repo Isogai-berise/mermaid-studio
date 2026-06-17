@@ -200,6 +200,21 @@
   .folder-new-input{display:none;background:#0e1014;border:1px solid var(--accent);
     border-radius:8px;padding:7px 12px;font-size:13px;color:var(--ink);
     font-family:var(--sans);width:100%;outline:none;box-shadow:0 0 0 3px var(--accent-dim)}
+
+  /* ---- AI bar ---- */
+  .ai-bar{display:flex;align-items:center;gap:6px;padding:8px 10px;
+    border-top:1px solid var(--editor-line);flex-shrink:0;background:var(--editor-bg)}
+  .ai-bar input{flex:1;background:#0e1014;border:1px solid var(--border);border-radius:7px;
+    padding:6px 10px;font-size:12.5px;color:var(--ink);font-family:var(--sans);outline:none;
+    transition:.12s}
+  .ai-bar input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-dim)}
+  .ai-bar input::placeholder{color:#4a505c}
+  .ai-key-btn{opacity:.55;padding:4px}
+  .ai-key-btn:hover{opacity:1}
+  .ai-key-btn svg{width:15px;height:15px}
+  .ai-generating .ai-bar input{opacity:.4;pointer-events:none}
+  .ai-generating #aiGenBtn{opacity:.6;pointer-events:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
   .modal-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;
     padding-top:16px;border-top:1px solid var(--border)}
   @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
@@ -348,6 +363,16 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
         <span id="errText"></span>
       </div>
+      <div class="ai-bar">
+        <button class="iconbtn ai-key-btn" id="aiKeyBtn" title="Claude APIキーを設定">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+        </button>
+        <input type="text" id="aiPrompt" placeholder="AIへの指示（例：エラーハンドリングを追加して）" autocomplete="off" spellcheck="false">
+        <button class="btn primary" id="aiGenBtn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          <span>生成</span>
+        </button>
+      </div>
     </section>
 
     <!-- canvas -->
@@ -420,6 +445,24 @@
     <div class="modal-foot">
       <button class="btn" id="saveModalCancel">キャンセル</button>
       <button class="btn primary" id="saveModalOk">保存する</button>
+    </div>
+  </div>
+</div>
+<!-- API key modal -->
+<div class="modal-backdrop" id="apiKeyModal">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">Claude APIキー</span>
+      <button class="modal-close" id="apiKeyModalClose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="mfield">
+      <label class="mfield-label">APIキー</label>
+      <input type="password" id="apiKeyInput" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+      <span class="mfield-hint">キーはメモリのみに保存されます。ページを更新すると消えます。</span>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="apiKeyModalCancel">キャンセル</button>
+      <button class="btn primary" id="apiKeyModalOk">設定する</button>
     </div>
   </div>
 </div>
@@ -629,7 +672,10 @@ async function render(){
   const id = 'mmd'+(renderId++);
   try{
     const {svg} = await mermaid.render(id, code);
-    stage.innerHTML = svg;
+    const svgDoc = new DOMParser().parseFromString(svg,'image/svg+xml');
+    const svgEl = svgDoc.querySelector('svg');
+    stage.innerHTML='';
+    if(svgEl) stage.appendChild(svgEl);
     currentSvg = stage.querySelector('svg');
     // record the diagram's intrinsic size so we can resize (not bitmap-stretch) when zooming
     const vb = currentSvg.viewBox.baseVal;
@@ -970,10 +1016,12 @@ function buildFolderEl(key,displayName,count){
     <div class="exp-folder-head">
       <svg class="exp-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg>
       <svg class="exp-fi exp-folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-      <span class="exp-folder-name">${displayName}</span>
-      <span class="exp-folder-count">${count}件</span>
+      <span class="exp-folder-name"></span>
+      <span class="exp-folder-count"></span>
     </div>
     <div class="exp-folder-files" style="display:none"></div>`;
+  div.querySelector('.exp-folder-name').textContent=displayName;
+  div.querySelector('.exp-folder-count').textContent=count+'件';
   const head=div.querySelector('.exp-folder-head');
   const files=div.querySelector('.exp-folder-files');
   head.addEventListener('click',()=>toggleExpFolder(head,key,files));
@@ -1014,11 +1062,16 @@ function renderExpFiles(filesEl,items,folderKey){
     el.className='exp-file';
     el.innerHTML=`
       <svg class="exp-fi exp-file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-      <span class="exp-file-name">${it.name}</span>
-      <span class="exp-file-date">${dateStr}</span>
-      <button class="exp-file-del" title="削除" data-id="${it.id}" data-folder="${it.folder||''}">
+      <span class="exp-file-name"></span>
+      <span class="exp-file-date"></span>
+      <button class="exp-file-del" title="削除">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
       </button>`;
+    el.querySelector('.exp-file-name').textContent=it.name;
+    el.querySelector('.exp-file-date').textContent=dateStr;
+    const delBtn=el.querySelector('.exp-file-del');
+    delBtn.dataset.id=it.id;
+    delBtn.dataset.folder=it.folder||'';
     el.addEventListener('click',e=>{
       if(e.target.closest('.exp-file-del')) return;
       closeExplorer(); loadSaved(it.id);
@@ -1213,6 +1266,112 @@ document.getElementById('saveBtn').addEventListener('click',()=>{
   saveCurrent();
 });
 document.getElementById('explorerBtn').addEventListener('click', openExplorer);
+
+// ---- Claude AI feature ----
+let claudeApiKey='';
+
+function openApiKeyModal(){
+  return new Promise(resolve=>{
+    const backdrop=document.getElementById('apiKeyModal');
+    const input=document.getElementById('apiKeyInput');
+    const okBtn=document.getElementById('apiKeyModalOk');
+    const cancelBtn=document.getElementById('apiKeyModalCancel');
+    const closeBtn=document.getElementById('apiKeyModalClose');
+    input.value=claudeApiKey;
+    backdrop.classList.add('open');
+    requestAnimationFrame(()=>{input.focus();input.select();});
+    function done(result){
+      backdrop.classList.remove('open');
+      okBtn.removeEventListener('click',onOk);
+      cancelBtn.removeEventListener('click',onCancel);
+      closeBtn.removeEventListener('click',onCancel);
+      backdrop.removeEventListener('click',onBd);
+      input.removeEventListener('keydown',onKey);
+      resolve(result);
+    }
+    function onOk(){
+      const key=(input.value||'').trim();
+      if(!key){input.focus();input.classList.add('shake');setTimeout(()=>input.classList.remove('shake'),400);return;}
+      done(key);
+    }
+    function onCancel(){done(null);}
+    function onBd(e){if(e.target===backdrop)onCancel();}
+    function onKey(e){if(e.key==='Enter')onOk();else if(e.key==='Escape')onCancel();}
+    okBtn.addEventListener('click',onOk);
+    cancelBtn.addEventListener('click',onCancel);
+    closeBtn.addEventListener('click',onCancel);
+    backdrop.addEventListener('click',onBd);
+    input.addEventListener('keydown',onKey);
+  });
+}
+
+async function callClaude(){
+  const promptEl=document.getElementById('aiPrompt');
+  const instruction=(promptEl.value||'').trim();
+  if(!instruction){promptEl.focus();showToast('指示を入力してください');return;}
+  if(!claudeApiKey){
+    const key=await openApiKeyModal();
+    if(!key)return;
+    claudeApiKey=key;
+  }
+  const currentCode=editor.value.trim();
+  const userMsg=currentCode
+    ?`Current diagram:\n${currentCode}\n\nInstruction: ${instruction}`
+    :`Instruction: ${instruction}`;
+  const editorPane=document.querySelector('.editor-pane');
+  const genBtn=document.getElementById('aiGenBtn');
+  const origHtml=genBtn.innerHTML;
+  editorPane.classList.add('ai-generating');
+  genBtn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin .8s linear infinite;width:14px;height:14px"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg><span>生成中…</span>';
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':claudeApiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true',
+      },
+      body:JSON.stringify({
+        model:'claude-haiku-4-5-20251001',
+        max_tokens:2048,
+        system:'You are a Mermaid diagram expert. Output ONLY valid Mermaid diagram code. No explanations, no markdown fences, no extra text.',
+        messages:[{role:'user',content:userMsg}],
+      }),
+    });
+    if(res.status===401){claudeApiKey='';showToast('APIキーが無効です。再設定してください');return;}
+    if(res.status===429){showToast('レート制限に達しました。しばらく待ってから再試行してください');return;}
+    if(!res.ok){
+      const err=await res.json().catch(()=>({}));
+      showToast('AI生成に失敗しました：'+(err.error?.message||res.status));
+      return;
+    }
+    const data=await res.json();
+    let code=(data.content?.[0]?.text||'').trim();
+    code=code.replace(/^```[a-zA-Z]*\n?/,'').replace(/\n?```$/,'').trim();
+    if(!code){showToast('コードを生成できませんでした');return;}
+    editor.value=code;
+    updateGutter();
+    render().then(fit);
+    showToast('生成しました');
+    promptEl.value='';
+  }catch(e){
+    showToast('AI生成に失敗しました：'+e.message);
+    console.error('callClaude:',e);
+  }finally{
+    editorPane.classList.remove('ai-generating');
+    genBtn.innerHTML=origHtml;
+  }
+}
+
+document.getElementById('aiKeyBtn').addEventListener('click',async()=>{
+  const key=await openApiKeyModal();
+  if(key)claudeApiKey=key;
+});
+document.getElementById('aiGenBtn').addEventListener('click',callClaude);
+document.getElementById('aiPrompt').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();callClaude();}
+});
 
 // ---- load Mermaid diagrams from a local .md file ----
 const mdBtn=document.getElementById('mdBtn');
